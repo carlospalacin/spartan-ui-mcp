@@ -7,18 +7,19 @@ import { registerComponentTools } from "./tools/components.js";
 import { registerDocsTools } from "./tools/docs.js";
 import { registerHealthTools } from "./tools/health.js";
 import { registerMetaTools } from "./tools/meta.js";
-import { registerGenerationTools } from "./tools/generation.js";
 import { registerSearchTools } from "./tools/search.js";
 import { registerAnalysisTools } from "./tools/analysis.js";
+import { registerBlockTools } from "./tools/blocks.js";
 import { registerResourceHandlers } from "./tools/resources.js";
 import { registerPromptHandlers } from "./tools/prompts.js";
 import { registerCacheTools } from "./tools/cache-tools.js";
 
 const server = new McpServer({
   name: "spartan-ui-mcp",
-  version: "1.0.0",
+  version: "2.0.0",
   description:
-    "MCP server exposing Spartan Angular UI documentation and component tools.",
+    "MCP server exposing Spartan Angular UI components, blocks, and documentation. " +
+    "Provides structured API data, source code from GitHub, and page-level building blocks.",
 });
 
 // Register tool modules
@@ -26,9 +27,9 @@ registerComponentTools(server);
 registerDocsTools(server);
 registerHealthTools(server);
 registerMetaTools(server);
-// registerGenerationTools(server); // Commented out: boilerplate generator needs manual implementation
-// registerSearchTools(server); // Commented out: full-text search returns bloated responses
+registerSearchTools(server);
 registerAnalysisTools(server);
+registerBlockTools(server);
 registerCacheTools(server);
 
 // Register resource handlers

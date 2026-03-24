@@ -1,80 +1,19 @@
 # Spartan UI MCP Server
 
-A comprehensive MCP (Model Context Protocol) server that exposes the entire Spartan Angular UI ecosystem as consumable tools. This server transforms Spartan UI documentation and component information into intelligent development tools for IDEs, AI assistants, and other MCP clients.
+An MCP (Model Context Protocol) server that gives AI assistants full access to the [Spartan Angular UI](https://www.spartan.ng) ecosystem — components, blocks, source code, and documentation.
 
-## 🎯 Purpose
+## What It Does
 
-The server provides comprehensive access to:
+- **57 UI Components** with structured API data (Brain & Helm APIs) — selectors, inputs, outputs, models, and code examples
+- **17 Building Blocks** — complete page-level Angular components (sidebar layouts, login/signup forms, calendar interfaces) fetched from GitHub
+- **TypeScript Source Code** — actual component library source from the `spartan-ng/spartan` repository
+- **Canonical Dependency Graph** — real component dependencies from the Spartan CLI
+- **Documentation** — 13 topics including installation, theming, CLI usage, and more
+- **Instant Search** — search across all components by name, selector, directive, or property
 
-- **46+ UI Components** with detailed API specifications (Brain & Helm APIs)
-- **Complete Documentation** (installation, theming, accessibility, etc.)
-- **Code Generation** capabilities for Angular components
-- **Intelligent Search** across components and docs
-- **Accessibility Analysis** and WCAG compliance checking
-- **Component Relationships** and dependency analysis
-- **Health Checks** and CLI utilities
+## Quick Start
 
-## 🚀 Features
-
-### 🔧 **Code Generation**
-
-- Generate complete Angular component boilerplate
-- Create working examples from API specifications
-- Validate component prop usage against official APIs
-
-### 🔍 **Intelligent Search & Discovery**
-
-- Full-text search across all components and documentation
-- Feature-based component discovery ("multi-selection", "form input", etc.)
-- Find related, similar, or alternative components
-
-### 📊 **Component Analysis**
-
-- Analyze component dependencies (npm, Angular CDK, peer components)
-- Compare Brain API vs Helm API variants
-- Discover component relationships and use cases
-
-### ♿ **Accessibility Tools**
-
-- Comprehensive accessibility feature analysis
-- ARIA support detection
-- Keyboard navigation and screen reader compatibility
-- WCAG compliance checking
-
-### 🎨 **Enhanced API Extraction**
-
-- Structured Brain API and Helm API parsing
-- TypeScript interface extraction
-- Code examples with context
-- Usage patterns and import statements
-
-## 📦 Installation
-
-1. **Clone the repository:**
-
-   ```bash
-   git clone <repository-url>
-   cd spartan-ui-mcp
-   ```
-
-2. **Install dependencies:**
-
-   ```bash
-   npm install
-   ```
-
-3. **Start the server:**
-   ```bash
-   npm start
-   # or for development with auto-reload
-   npm run dev
-   ```
-
-## 🛠 Usage
-
-### Quick Start (No Installation Required!)
-
-Configure your MCP client (Claude Desktop, Cursor, etc.):
+Configure your MCP client (Claude Desktop, Cursor, VS Code, etc.):
 
 ```json
 {
@@ -87,219 +26,234 @@ Configure your MCP client (Claude Desktop, Cursor, etc.):
 }
 ```
 
-**That's it!** The server will automatically download and run when needed.
+### With GitHub Token (recommended)
 
-### Alternative Installation Methods
-
-**Global Installation:**
-
-```bash
-npm install -g spartan-ui-mcp
-```
+For block source code and component source fetching, a GitHub token gives you 5000 req/hr instead of 60:
 
 ```json
 {
   "mcpServers": {
     "spartan-ui-mcp": {
-      "command": "spartan-ui-mcp"
+      "command": "npx",
+      "args": ["spartan-ui-mcp"],
+      "env": {
+        "GITHUB_TOKEN": "ghp_your_token_here"
+      }
     }
   }
 }
 ```
 
-**Development Setup:**
+No special scopes needed — the token just authenticates against the public repo.
+
+<details>
+<summary><strong>How to get a GitHub token</strong></summary>
+
+1. Go to [github.com/settings/tokens](https://github.com/settings/tokens?type=beta)
+2. Click **"Generate new token"** > **"Fine-grained token"**
+3. Give it a name (e.g., `spartan-mcp`)
+4. Set expiration (90 days or custom)
+5. Under **"Repository access"**, select **"Public Repositories (read-only)"**
+6. No additional permissions needed — leave everything else as default
+7. Click **"Generate token"** and copy the `github_pat_...` value
+
+Classic tokens also work: create one at [github.com/settings/tokens/new](https://github.com/settings/tokens/new) with no scopes selected.
+
+</details>
+
+### Development Setup
 
 ```bash
 git clone https://github.com/SOG-web/spartan-ui-mcp.git
 cd spartan-ui-mcp
 npm install
-npm start
+npm start        # or: npm run dev (auto-reload)
 ```
 
-### Example Tool Calls
+## Tools (17)
 
-#### **Component Discovery**
+### Components
 
-```json
-// List all available components
-{ "tool": "spartan_components_list" }
+| Tool | Description |
+|------|-------------|
+| `spartan_components_list` | List all 57 components with URLs |
+| `spartan_components_get` | Get structured API data (Brain/Helm directives, inputs, outputs, examples). Uses the Spartan Analog API for perfect data quality. |
+| `spartan_components_source` | Fetch actual TypeScript source code from GitHub (`libs/brain/` or `libs/helm/`) |
+| `spartan_components_dependencies` | Get the canonical dependency graph for any component |
 
-// Search components by feature
-{ "tool": "spartan_components_search", "feature": "multi-selection" }
+### Blocks
 
-// Get component with enhanced API extraction
-{ "tool": "spartan_components_get", "name": "calendar", "extract": "api" }
+| Tool | Description |
+|------|-------------|
+| `spartan_blocks_list` | List all building block categories and variants |
+| `spartan_blocks_get` | Fetch complete block source code from GitHub. Returns Angular component files with template, imports, and extracted Spartan/Angular dependencies. |
+
+### Search & Documentation
+
+| Tool | Description |
+|------|-------------|
+| `spartan_search` | Instant search across components by name, selector, directive, or input/output property |
+| `spartan_docs_get` | Fetch documentation topics (installation, theming, CLI, dark-mode, etc.) |
+| `spartan_meta` | Get full metadata for autocomplete (all components, blocks, and tool usage) |
+
+### Health & Cache
+
+| Tool | Description |
+|------|-------------|
+| `spartan_health_check` | Check spartan.ng page availability |
+| `spartan_health_instructions` | Get Spartan CLI health check instructions |
+| `spartan_health_command` | Build `ng`/`nx` health check commands |
+| `spartan_cache_status` | View cache statistics |
+| `spartan_cache_clear` | Clear cached data |
+| `spartan_cache_rebuild` | Rebuild cache (components, docs, and optionally blocks from GitHub) |
+| `spartan_cache_switch_version` | Switch Spartan UI version for caching |
+| `spartan_cache_list_versions` | List all cached versions |
+
+## Resources
+
+MCP resources provide read-only data via URI scheme:
+
+- `spartan://components/list` — all components with metadata
+- `spartan://component/{name}/api` — Brain & Helm API specifications
+- `spartan://component/{name}/examples` — code examples
+- `spartan://component/{name}/full` — complete documentation with install snippets
+- `spartan://blocks/list` — all block categories and variants
+
+## Prompts
+
+Pre-built conversation templates:
+
+- `spartan-get-started` — get started with a component (brain or helm)
+- `spartan-compare-apis` — compare Brain API vs Helm API
+- `spartan-implement-feature` — implement a feature with a component
+- `spartan-troubleshoot` — troubleshoot component issues
+- `spartan-list-components` — list all components by category
+- `spartan-use-block` — use a building block in your project
+
+## Example Usage
+
+```jsonc
+// Get dialog API — returns 7 Brain + 10 Helm directives with full specs
+{ "tool": "spartan_components_get", "arguments": { "name": "dialog" } }
+
+// Get sidebar source code from GitHub
+{ "tool": "spartan_components_source", "arguments": { "name": "sidebar", "layer": "helm" } }
+
+// Get a login block with shared utilities
+{ "tool": "spartan_blocks_get", "arguments": { "category": "login", "variant": "login-simple-reactive-form", "includeShared": true } }
+
+// Search for date-related components
+{ "tool": "spartan_search", "arguments": { "query": "date" } }
+
+// Get sidebar dependencies (with transitive)
+{ "tool": "spartan_components_dependencies", "arguments": { "componentName": "sidebar", "includeTransitive": true } }
 ```
 
-#### **Code Generation**
+## Architecture
 
-```json
-// Generate Angular component boilerplate
-{
-  "tool": "spartan_generate_component",
-  "componentName": "calendar",
-  "variant": "helm",
-  "outputFormat": "standalone"
-}
+```mermaid
+flowchart TB
+    subgraph Client["MCP Client (IDE / AI Assistant)"]
+        direction LR
+        C1["Tool Calls"]
+        C2["Resources"]
+        C3["Prompts"]
+    end
 
-// Create working example
-{
-  "tool": "spartan_generate_example",
-  "componentName": "dialog",
-  "scenario": "advanced"
-}
+    subgraph Server["spartan-ui-mcp (stdio)"]
+        direction TB
+        Router["server.js — Router"]
 
-// Validate component props
-{
-  "tool": "spartan_validate_props",
-  "componentName": "calendar",
-  "props": { "date": "2024-01-01", "min": "invalid" }
-}
+        subgraph Tools["Tool Modules"]
+            direction LR
+            T1["components.js"]
+            T2["blocks.js"]
+            T3["search.js"]
+            T4["docs.js"]
+            T5["analysis.js"]
+        end
+
+        subgraph Cache["Cache Layers"]
+            direction LR
+            MC["In-Memory\n(5min / 30min / 1hr)"]
+            FC["File-Based\n(24hr TTL)\ncache/{version}/"]
+        end
+    end
+
+    subgraph Sources["Data Sources"]
+        direction LR
+        API["Spartan Analog API\n1 request → 57 components\n(selectors, inputs, outputs,\nexamples, install snippets)"]
+        GH["GitHub API\nspartan-ng/spartan\n(block source, TS source,\ndependency graph)"]
+        WEB["spartan.ng Website\n(documentation pages,\nHTML content)"]
+    end
+
+    Client --> Router
+    Router --> Tools
+    Tools --> Cache
+    Cache --> Sources
+
+    style Client fill:#1a1a2e,stroke:#e94560,color:#eee
+    style Server fill:#16213e,stroke:#0f3460,color:#eee
+    style Sources fill:#0f3460,stroke:#533483,color:#eee
+    style API fill:#1a472a,stroke:#2d6a4f,color:#eee
+    style GH fill:#1a472a,stroke:#2d6a4f,color:#eee
+    style WEB fill:#1a472a,stroke:#2d6a4f,color:#eee
 ```
 
-#### **Search & Analysis**
-
-```json
-// Full-text search
-{ "tool": "spartan_search", "query": "date picker accessibility" }
-
-// Find related components
-{ "tool": "spartan_components_related", "componentName": "calendar" }
-
-// Analyze dependencies
-{ "tool": "spartan_components_dependencies", "componentName": "dialog" }
-
-// Compare API variants
-{ "tool": "spartan_components_variants", "componentName": "calendar" }
-```
-
-#### **Accessibility Analysis**
-
-```json
-// Comprehensive accessibility check
-{ "tool": "spartan_accessibility_check", "componentName": "dialog" }
-
-// Specific accessibility aspect
-{ "tool": "spartan_accessibility_check", "componentName": "button", "checkType": "aria" }
-```
-
-## 🛠 Available Tools (18 Total)
-
-### **Core Tools (7)**
-
-- `spartan_components_list` - List all components with URLs
-- `spartan_components_get` - Get component docs with enhanced API extraction
-- `spartan_docs_get` - Fetch documentation topics
-- `spartan_health_check` - Check page availability
-- `spartan_health_instructions` - CLI health check guidance
-- `spartan_health_command` - Generate health check commands
-- `spartan_meta` - Metadata for autocompletion
-
-### **Code Generation Tools (3)**
-
-- `spartan_generate_component` - Generate Angular component boilerplate
-- `spartan_generate_example` - Create working examples from specs
-- `spartan_validate_props` - Validate component property usage
-
-### **Search & Discovery Tools (3)**
-
-- `spartan_search` - Full-text search across components and docs
-- `spartan_components_search` - Search components by feature/use-case
-- `spartan_examples_get` - Get specific examples by component
-
-### **Component Analysis Tools (4)**
-
-- `spartan_components_dependencies` - Analyze component dependencies
-- `spartan_components_related` - Find related/similar components
-- `spartan_components_variants` - Compare Brain vs Helm API variants
-- `spartan_accessibility_check` - Comprehensive accessibility analysis
-
-## 📊 Output Formats
-
-- **`html`** - Raw HTML from documentation pages
-- **`text`** - Clean plain text (HTML tags stripped)
-- **`api`** - Structured JSON with Brain/Helm API specifications
-- **`code`** - Extracted code blocks with context
-- **`headings`** - Section headings for navigation
-- **`links`** - Extracted links and references
-
-## 🏗 Project Structure
+### Request Flow
 
 ```
-spartan-ui-mcp/
-├── server.js              # Main MCP server entry point (32 lines)
-├── package.json            # Dependencies and npm scripts
-├── plan.md                 # Comprehensive project documentation
-└── tools/                  # Modular tool implementations
-    ├── utils.js            # Enhanced API extraction & utilities (431 lines)
-    ├── components.js       # Component tools with processing hints (121 lines)
-    ├── docs.js             # Documentation fetching tools (78 lines)
-    ├── health.js           # Health check and CLI tools (154 lines)
-    ├── meta.js             # Metadata and autocompletion (64 lines)
-    ├── generation.js       # Code generation tools (NEW)
-    ├── search.js           # Search and discovery tools (NEW)
-    └── analysis.js         # Component analysis tools (NEW)
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────────┐
+│  AI asks:   │────▶│  MCP Tool:   │────▶│  Cache hit?  │────▶│  Return cached   │
+│  "How do I  │     │  components  │     │  Yes ───────▶│     │  structured JSON  │
+│  use the    │     │  _get        │     │  No ────┐    │     └──────────────────┘
+│  sidebar?"  │     │  name:sidebar│     └─────────┘    │
+└─────────────┘     └──────────────┘            │       │
+                                                ▼       │
+                                    ┌───────────────────┘
+                                    │  Fetch from source
+                                    ├─ extract=api  → Analog API (structured JSON)
+                                    ├─ extract=code → spartan.ng (HTML scraping)
+                                    └─ source tool  → GitHub API (TypeScript files)
 ```
 
-## ⚡ Performance & Caching
+## Data Sources
 
-- **Intelligent Caching**: 5-minute TTL with configurable cache via `SPARTAN_CACHE_TTL_MS`
-- **Batch Processing**: Efficient handling of multiple component requests
-- **Error Resilience**: Graceful handling of failed requests with fallbacks
-- **Response Optimization**: Structured outputs for faster AI processing
+The server uses a hybrid approach for maximum data quality:
 
-## 🎯 AI Processing Enhancements
+| Source | Used For | Method |
+|--------|----------|--------|
+| Spartan Analog API | Component APIs, examples, install snippets | Single JSON endpoint for all 57 components |
+| GitHub API (`spartan-ng/spartan`) | Block source code, component TypeScript source | Contents API with in-memory caching |
+| spartan.ng website | Documentation pages, HTML content | HTTP fetch with file-based caching |
+| Spartan CLI metadata | Dependency graph (canonical) | Embedded from `primitive-deps.ts` |
 
-The server includes special features to guide AI models:
+## Caching
 
-- **Processing Instructions**: Clear guidance in every response
-- **Structured Outputs**: JSON format with metadata and instructions
-- **Enhanced Descriptions**: Detailed tool descriptions with usage examples
-- **Error Context**: Comprehensive error messages with suggestions
+Two layers:
 
-## 🧪 Testing & Validation
+1. **In-memory** — 5min for website content, 30min for Analog API, 1hr for GitHub API
+2. **File-based** — 24hr TTL under `cache/{version}/` with subdirectories for components, docs, blocks, and source
 
-- ✅ All 46 components validated and accessible
-- ✅ Complete API extraction testing
-- ✅ Code generation validation
-- ✅ Search functionality verification
-- ✅ Accessibility analysis testing
+## Environment Variables
 
-## 🔧 Configuration
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GITHUB_TOKEN` | — | GitHub PAT for higher rate limits (5000/hr vs 60/hr) |
+| `SPARTAN_CACHE_TTL_HOURS` | `24` | File cache TTL in hours |
+| `SPARTAN_CACHE_TTL_MS` | `300000` | In-memory cache TTL in ms |
+| `SPARTAN_FETCH_TIMEOUT_MS` | `15000` | HTTP request timeout in ms |
 
-### Environment Variables
+## Testing
 
-- `SPARTAN_CACHE_TTL_MS` - Cache TTL in milliseconds (default: 300000 = 5 minutes)
+```bash
+node test-e2e.js    # 34 end-to-end tests via MCP client protocol
+```
 
-### NPM Scripts
+## License
 
-- `npm start` - Start the server
-- `npm run dev` - Start with auto-reload (--watch)
-- `npm test` - Run tests (placeholder)
-
-## 📝 Notes
-
-- **Data Source**: All content fetched from public Spartan UI pages at [spartan.ng](https://www.spartan.ng)
-- **Input Validation**: Comprehensive Zod schema validation for all tool inputs
-- **Source Attribution**: All responses include source URLs for transparency
-- **Error Handling**: Graceful handling of 404s and network issues
-- **Type Safety**: Full TypeScript support with proper type annotations
-
-## 🤝 Contributing
-
-Contributions welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Submit a pull request
-
-## 📄 License
-
-ISC License - see package.json for details.
+MIT
 
 ---
 
-**Built for the Spartan Angular UI community** 🏛️
-
-This MCP server transforms static documentation into intelligent, queryable tools that enhance the developer experience with Spartan UI components.
+Built for the [Spartan Angular UI](https://www.spartan.ng) community.

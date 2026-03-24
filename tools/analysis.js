@@ -2,10 +2,7 @@
 import { z } from "zod";
 import {
   KNOWN_COMPONENTS,
-  SPARTAN_COMPONENTS_BASE,
-  fetchContent,
-  extractAPIInfo,
-  htmlToText,
+  COMPONENT_DEPENDENCIES,
 } from "./utils.js";
 
 export function registerAnalysisTools(server) {
@@ -55,8 +52,6 @@ export function registerAnalysisTools(server) {
               {
                 component: componentName,
                 dependencies,
-                processingInstructions:
-                  "Present dependencies with installation commands, import statements, and setup instructions. Group by type (npm packages, Angular CDK, peer components).",
               },
               null,
               2
@@ -187,9 +182,11 @@ export function registerAnalysisTools(server) {
   );
   */
 
-  // Accessibility check
+  // Accessibility check — removed: produced fake scores based on string matching,
+  // not real accessibility analysis. The data was misleading.
+  /* REMOVED in v2.0
   server.registerTool(
-    "spartan_accessibility_check",
+    "spartan_accessibility_check_REMOVED",
     {
       title: "Check component accessibility features",
       description:
@@ -230,8 +227,6 @@ export function registerAnalysisTools(server) {
                 component: componentName,
                 checkType: args.checkType,
                 accessibility,
-                processingInstructions:
-                  "Present accessibility information with actionable recommendations, code examples, and compliance notes for WCAG guidelines.",
               },
               null,
               2
@@ -241,6 +236,7 @@ export function registerAnalysisTools(server) {
       };
     }
   );
+  REMOVED in v2.0 */
 }
 
 /**
@@ -249,568 +245,42 @@ export function registerAnalysisTools(server) {
  * @param {boolean} includeTransitive
  */
 async function analyzeComponentDependencies(componentName, includeTransitive) {
-  try {
-    const url = `${SPARTAN_COMPONENTS_BASE}/${componentName}`;
-    const html = await fetchContent(url, "html", false);
-    const text = htmlToText(html);
-    const apiInfo = extractAPIInfo(html);
+  // Use the canonical dependency graph from the Spartan CLI
+  const directDeps = COMPONENT_DEPENDENCIES[componentName] || [];
 
-    const dependencies = {
-      npm: /** @type {string[]} */ ([]),
-      angularCdk: /** @type {string[]} */ ([]),
-      peerComponents: /** @type {string[]} */ ([]),
-      imports: /** @type {Array<{items: string, from: string}>} */ ([]),
-      setup: /** @type {string[]} */ ([]),
-    };
+  const dependencies = {
+    direct: directDeps.filter((d) => d !== "utils"),
+    installCommand: `npx ng g @spartan-ng/cli:ui ${componentName}`,
+    allRequired: directDeps,
+  };
 
-    // Extract npm dependencies from installation instructions
-    const npmRegex = /npm\s+install\s+([^\n]+)/gi;
-    let match;
-    while ((match = npmRegex.exec(text)) !== null) {
-      const packages = match[1]
-        .split(/\s+/)
-        .filter((pkg) => pkg.startsWith("@") || !pkg.includes("-"));
-      dependencies.npm.push(...packages);
-    }
+  // Add transitive dependencies if requested
+  if (includeTransitive) {
+    const transitive = new Set();
+    const visited = new Set([componentName]);
 
-    // Extract Angular CDK dependencies
-    const cdkComponents = [
-      "@angular/cdk/a11y",
-      "@angular/cdk/dialog",
-      "@angular/cdk/overlay",
-      "@angular/cdk/portal",
-      "@angular/cdk/scrolling",
-      "@angular/cdk/table",
-    ];
-
-    for (const cdkComponent of cdkComponents) {
-      if (text.includes(cdkComponent)) {
-        dependencies.angularCdk.push(cdkComponent);
-      }
-    }
-
-    // Extract peer component dependencies
-    for (const otherComponent of KNOWN_COMPONENTS) {
-      if (
-        otherComponent !== componentName &&
-        text.toLowerCase().includes(otherComponent)
-      ) {
-        dependencies.peerComponents.push(otherComponent);
-      }
-    }
-
-    // Extract import statements
-    const importRegex = /import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/gi;
-    match = null;
-    while ((match = importRegex.exec(text)) !== null) {
-      dependencies.imports.push({
-        items: match[1].trim(),
-        from: match[2].trim(),
-      });
-    }
-
-    // Generate setup instructions
-    dependencies.setup = generateSetupInstructions(componentName, dependencies);
-
-    // Add transitive dependencies if requested
-    if (includeTransitive) {
-      dependencies.transitive = await getTransitiveDependencies(
-        dependencies.peerComponents
-      );
-    }
-
-    return dependencies;
-  } catch (error) {
-    console.error(`Error analyzing dependencies for ${componentName}:`, error);
-    return {
-      npm: [],
-      angularCdk: [],
-      peerComponents: [],
-      imports: [],
-      setup: [`Failed to analyze dependencies: ${error.message}`],
-      error: error.message,
-    };
-  }
-}
-
-/**
- * Find related components
- * @param {string} componentName
- * @param {string} relationshipType
- * @param {number} limit
- */
-async function findRelatedComponents(componentName, relationshipType, limit) {
-  try {
-    const url = `${SPARTAN_COMPONENTS_BASE}/${componentName}`;
-    const content = await fetchContent(url, "text", false);
-
-    const related = [];
-
-    // Component relationship mapping
-    const relationships = {
-      similar: getSimilarComponents(componentName),
-      complementary: getComplementaryComponents(componentName),
-      alternative: getAlternativeComponents(componentName),
-    };
-
-    const targetRelationships =
-      relationshipType === "all"
-        ? Object.values(relationships).flat()
-        : relationships[relationshipType] || [];
-
-    for (const relatedComponent of targetRelationships) {
-      if (KNOWN_COMPONENTS.includes(relatedComponent)) {
-        try {
-          const relatedUrl = `${SPARTAN_COMPONENTS_BASE}/${relatedComponent}`;
-          const relatedContent = await fetchContent(relatedUrl, "text", false);
-
-          related.push({
-            name: relatedComponent,
-            relationship: determineRelationshipType(
-              componentName,
-              relatedComponent
-            ),
-            description: extractDescription(relatedContent),
-            reason: generateRelationshipReason(componentName, relatedComponent),
-            url: relatedUrl,
-          });
-
-          if (related.length >= limit) break;
-        } catch (error) {
-          console.warn(
-            `Failed to analyze related component ${relatedComponent}:`,
-            error.message
-          );
+    const collectDeps = (name) => {
+      const deps = COMPONENT_DEPENDENCIES[name] || [];
+      for (const dep of deps) {
+        if (!visited.has(dep)) {
+          visited.add(dep);
+          if (dep !== "utils") transitive.add(dep);
+          collectDeps(dep);
         }
       }
-    }
-
-    return related;
-  } catch (error) {
-    console.error(
-      `Error finding related components for ${componentName}:`,
-      error
-    );
-    return [];
-  }
-}
-
-/**
- * Analyze component variants (Brain vs Helm)
- * @param {string} componentName
- * @param {boolean} includeComparison
- */
-async function analyzeComponentVariants(componentName, includeComparison) {
-  try {
-    const url = `${SPARTAN_COMPONENTS_BASE}/${componentName}`;
-    const html = await fetchContent(url, "html", false);
-    const apiInfo = extractAPIInfo(html);
-
-    const variants = {
-      brain: /** @type {any} */ (null),
-      helm: /** @type {any} */ (null),
-      comparison: /** @type {any} */ (null),
     };
+    collectDeps(componentName);
 
-    // Extract Brain API variants
-    if (apiInfo.brainAPI && apiInfo.brainAPI.length > 0) {
-      variants.brain = {
-        components: apiInfo.brainAPI,
-        characteristics: {
-          level: "low-level",
-          styling: "unstyled/minimal",
-          flexibility: "high",
-          complexity: "higher",
-          useCase: "custom designs, full control",
-        },
-      };
-    }
-
-    // Extract Helm API variants
-    if (apiInfo.helmAPI && apiInfo.helmAPI.length > 0) {
-      variants.helm = {
-        components: apiInfo.helmAPI,
-        characteristics: {
-          level: "high-level",
-          styling: "pre-styled",
-          flexibility: "moderate",
-          complexity: "lower",
-          useCase: "rapid development, consistent design",
-        },
-      };
-    }
-
-    // Generate comparison if requested
-    if (includeComparison && variants.brain && variants.helm) {
-      variants.comparison = generateVariantComparison(
-        variants.brain,
-        variants.helm
-      );
-    }
-
-    // Add recommendations
-    variants.recommendations = generateVariantRecommendations(
-      componentName,
-      variants
-    );
-
-    return variants;
-  } catch (error) {
-    console.error(`Error analyzing variants for ${componentName}:`, error);
-    return {
-      brain: null,
-      helm: null,
-      comparison: null,
-      error: error.message,
-    };
-  }
-}
-
-/**
- * Analyze accessibility features
- * @param {string} componentName
- * @param {string} checkType
- */
-async function analyzeAccessibility(componentName, checkType) {
-  try {
-    const url = `${SPARTAN_COMPONENTS_BASE}/${componentName}`;
-    const html = await fetchContent(url, "html", false);
-    const text = htmlToText(html);
-    const apiInfo = extractAPIInfo(html);
-
-    const accessibility = {
-      overview: {},
-      aria: {},
-      keyboard: {},
-      screenreader: {},
-      wcag: {},
-      recommendations: /** @type {string[]} */ ([]),
-    };
-
-    // Extract accessibility information from the enhanced API info
-    if (apiInfo.accessibility && apiInfo.accessibility.length > 0) {
-      for (const a11yItem of apiInfo.accessibility) {
-        const category = categorizeA11yFeature(a11yItem.feature);
-        if (!accessibility[category]) accessibility[category] = {};
-        accessibility[category][a11yItem.feature] = a11yItem.description;
-      }
-    }
-
-    // Analyze specific accessibility aspects
-    if (checkType === "all" || checkType === "aria") {
-      accessibility.aria = analyzeAriaSupport(text, apiInfo);
-    }
-
-    if (checkType === "all" || checkType === "keyboard") {
-      accessibility.keyboard = analyzeKeyboardSupport(text, componentName);
-    }
-
-    if (checkType === "all" || checkType === "screenreader") {
-      accessibility.screenreader = analyzeScreenReaderSupport(
-        text,
-        componentName
-      );
-    }
-
-    if (checkType === "all" || checkType === "wcag") {
-      accessibility.wcag = analyzeWcagCompliance(text, componentName);
-    }
-
-    // Generate recommendations
-    accessibility.recommendations = generateA11yRecommendations(
-      componentName,
-      accessibility
-    );
-
-    // Add overview if requested
-    if (checkType === "all" || checkType === "overview") {
-      accessibility.overview = generateA11yOverview(accessibility);
-    }
-
-    return accessibility;
-  } catch (error) {
-    console.error(`Error analyzing accessibility for ${componentName}:`, error);
-    return {
-      overview: {},
-      aria: {},
-      keyboard: {},
-      screenreader: {},
-      wcag: {},
-      recommendations: [`Failed to analyze accessibility: ${error.message}`],
-      error: error.message,
-    };
-  }
-}
-
-// Helper functions
-
-function getSimilarComponents(componentName) {
-  const similarityMap = {
-    button: ["toggle", "switch"],
-    input: ["textarea", "select"],
-    dialog: ["alert-dialog", "sheet"],
-    calendar: ["date-picker"],
-    table: ["data-table"],
-    alert: ["alert-dialog"],
-    popover: ["tooltip", "dropdown-menu"],
-    tabs: ["toggle-group"],
-    checkbox: ["radio-group", "switch"],
-    card: ["sheet"],
-    menubar: ["dropdown-menu", "context-menu"],
-  };
-
-  return similarityMap[componentName] || [];
-}
-
-function getComplementaryComponents(componentName) {
-  const complementaryMap = {
-    input: ["form-field", "label", "button"],
-    calendar: ["input", "form-field", "button"],
-    table: ["pagination", "input", "select"],
-    dialog: ["button", "card"],
-    "form-field": ["input", "textarea", "select", "checkbox"],
-    card: ["button", "avatar", "badge"],
-    breadcrumb: ["button", "separator"],
-    "dropdown-menu": ["button", "menubar"],
-    "data-table": ["pagination", "input", "checkbox"],
-  };
-
-  return complementaryMap[componentName] || [];
-}
-
-function getAlternativeComponents(componentName) {
-  const alternativeMap = {
-    dialog: ["sheet", "popover"],
-    "dropdown-menu": ["popover", "context-menu"],
-    button: ["toggle", "switch"],
-    input: ["combobox", "select"],
-    alert: ["sonner", "toast"],
-    calendar: ["date-picker", "input"],
-    table: ["data-table"],
-    tabs: ["accordion", "collapsible"],
-  };
-
-  return alternativeMap[componentName] || [];
-}
-
-function determineRelationshipType(component1, component2) {
-  if (getSimilarComponents(component1).includes(component2)) return "similar";
-  if (getComplementaryComponents(component1).includes(component2))
-    return "complementary";
-  if (getAlternativeComponents(component1).includes(component2))
-    return "alternative";
-  return "related";
-}
-
-function generateRelationshipReason(component1, component2) {
-  const relationship = determineRelationshipType(component1, component2);
-  const reasons = {
-    similar: `${component2} provides similar functionality to ${component1}`,
-    complementary: `${component2} works well together with ${component1}`,
-    alternative: `${component2} offers an alternative approach to ${component1}`,
-    related: `${component2} is related to ${component1} in functionality or use case`,
-  };
-
-  return reasons[relationship];
-}
-
-function extractDescription(content) {
-  const lines = content.split("\n").filter((line) => line.trim().length > 0);
-  return lines.length > 1 ? lines[1].trim() : lines[0]?.trim() || "";
-}
-
-function generateSetupInstructions(componentName, dependencies) {
-  const instructions = [];
-
-  if (dependencies.npm.length > 0) {
-    instructions.push(
-      `Install dependencies: npm install ${dependencies.npm.join(" ")}`
-    );
+    // Remove direct deps from transitive
+    for (const d of directDeps) transitive.delete(d);
+    dependencies.transitive = [...transitive];
   }
 
-  instructions.push(
-    `Install Spartan UI component: npx ng g @spartan-ng/cli:ui ${componentName}`
-  );
-
-  if (dependencies.imports.length > 0) {
-    instructions.push("Add imports to your component:");
-    dependencies.imports.forEach((imp) => {
-      instructions.push(`  import { ${imp.items} } from '${imp.from}';`);
-    });
-  }
-
-  return instructions;
+  return dependencies;
 }
 
-async function getTransitiveDependencies(peerComponents) {
-  const transitive = [];
-  for (const component of peerComponents.slice(0, 3)) {
-    // Limit to avoid too many requests
-    try {
-      const deps = await analyzeComponentDependencies(component, false);
-      transitive.push({
-        component,
-        dependencies: deps.peerComponents,
-      });
-    } catch (error) {
-      console.warn(
-        `Failed to get transitive dependencies for ${component}:`,
-        error.message
-      );
-    }
-  }
-  return transitive;
-}
-
-function generateVariantComparison(brain, helm) {
-  return {
-    "API Complexity": { brain: "Higher", helm: "Lower" },
-    "Styling Control": { brain: "Full control", helm: "Pre-styled" },
-    "Learning Curve": { brain: "Steeper", helm: "Gentler" },
-    Customization: { brain: "Unlimited", helm: "Theme-based" },
-    "Development Speed": { brain: "Slower", helm: "Faster" },
-    "Bundle Size": { brain: "Smaller", helm: "Larger" },
-  };
-}
-
-function generateVariantRecommendations(componentName, variants) {
-  const recommendations = [];
-
-  if (variants.brain && variants.helm) {
-    recommendations.push(
-      "Use Brain API when you need full control over styling and behavior"
-    );
-    recommendations.push(
-      "Use Helm API for rapid development with consistent design"
-    );
-    recommendations.push(
-      "Consider starting with Helm API and migrating to Brain API if needed"
-    );
-  } else if (variants.brain) {
-    recommendations.push(
-      "This component only provides Brain API - you'll need to handle styling"
-    );
-  } else if (variants.helm) {
-    recommendations.push(
-      "This component only provides Helm API - pre-styled and ready to use"
-    );
-  }
-
-  return recommendations;
-}
-
-function categorizeA11yFeature(feature) {
-  if (feature.includes("aria")) return "aria";
-  if (feature.includes("keyboard") || feature.includes("focus"))
-    return "keyboard";
-  if (feature.includes("screen reader")) return "screenreader";
-  return "overview";
-}
-
-function analyzeAriaSupport(text, apiInfo) {
-  const ariaFeatures = {};
-  const ariaAttributes = [
-    "aria-label",
-    "aria-describedby",
-    "aria-expanded",
-    "aria-selected",
-    "role",
-  ];
-
-  for (const attr of ariaAttributes) {
-    if (text.includes(attr)) {
-      ariaFeatures[attr] = `${attr} support detected`;
-    }
-  }
-
-  return ariaFeatures;
-}
-
-function analyzeKeyboardSupport(text, componentName) {
-  const keyboardFeatures = {};
-  const keyboardTerms = [
-    "keyboard",
-    "focus",
-    "tab",
-    "enter",
-    "space",
-    "arrow keys",
-  ];
-
-  for (const term of keyboardTerms) {
-    if (text.toLowerCase().includes(term)) {
-      keyboardFeatures[term] = `${term} navigation supported`;
-    }
-  }
-
-  return keyboardFeatures;
-}
-
-function analyzeScreenReaderSupport(text, componentName) {
-  const srFeatures = {};
-
-  if (text.includes("screen reader")) {
-    srFeatures.general = "Screen reader support mentioned";
-  }
-
-  if (text.includes("announcements")) {
-    srFeatures.announcements = "Screen reader announcements supported";
-  }
-
-  return srFeatures;
-}
-
-function analyzeWcagCompliance(text, componentName) {
-  const wcagFeatures = {};
-
-  if (text.includes("WCAG")) {
-    wcagFeatures.compliance = "WCAG compliance mentioned";
-  }
-
-  // Check for common WCAG criteria
-  const wcagCriteria = ["contrast", "focus visible", "keyboard accessible"];
-
-  for (const criteria of wcagCriteria) {
-    if (text.toLowerCase().includes(criteria)) {
-      wcagFeatures[criteria] = `${criteria} support detected`;
-    }
-  }
-
-  return wcagFeatures;
-}
-
-function generateA11yRecommendations(componentName, accessibility) {
-  const recommendations = [];
-
-  recommendations.push(
-    `Test ${componentName} with screen readers like NVDA or JAWS`
-  );
-  recommendations.push(`Verify keyboard navigation works without mouse`);
-  recommendations.push(`Check color contrast meets WCAG AA standards`);
-  recommendations.push(`Ensure focus indicators are visible and clear`);
-
-  return recommendations;
-}
-
-function generateA11yOverview(accessibility) {
-  const hasAria = Object.keys(accessibility.aria).length > 0;
-  const hasKeyboard = Object.keys(accessibility.keyboard).length > 0;
-  const hasScreenReader = Object.keys(accessibility.screenreader).length > 0;
-
-  return {
-    score: calculateA11yScore(hasAria, hasKeyboard, hasScreenReader),
-    features: {
-      "ARIA Support": hasAria ? "Yes" : "Limited",
-      "Keyboard Navigation": hasKeyboard ? "Yes" : "Limited",
-      "Screen Reader": hasScreenReader ? "Yes" : "Limited",
-    },
-  };
-}
-
-function calculateA11yScore(hasAria, hasKeyboard, hasScreenReader) {
-  let score = 0;
-  if (hasAria) score += 33;
-  if (hasKeyboard) score += 33;
-  if (hasScreenReader) score += 34;
-  return `${score}%`;
-}
+// Remaining helper functions removed in v2.0:
+// - findRelatedComponents, analyzeComponentVariants, analyzeAccessibility
+// - All helper functions for the above (getSimilarComponents, etc.)
+// These were producing fake/hardcoded data. The dependency graph now comes
+// from COMPONENT_DEPENDENCIES (canonical source: spartan-ng/cli).

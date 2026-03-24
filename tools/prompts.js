@@ -3,10 +3,10 @@
 import { z } from "zod";
 import {
   KNOWN_COMPONENTS,
+  KNOWN_BLOCKS,
+  BLOCK_CATEGORIES,
   SPARTAN_COMPONENTS_BASE,
-  fetchContent,
-  extractAPIInfo,
-  extractCodeBlocks,
+  getComponentAPI,
 } from "./utils.js";
 
 /**
@@ -36,21 +36,16 @@ export function registerPromptHandlers(server) {
 
       if (!KNOWN_COMPONENTS.includes(componentName)) {
         throw new Error(
-          `Unknown component: ${componentName}. Available: ${KNOWN_COMPONENTS.slice(
-            0,
-            5
-          ).join(", ")}...`
+          `Unknown component: ${componentName}. Available: ${KNOWN_COMPONENTS.slice(0, 5).join(", ")}...`
         );
       }
 
       const componentUrl = `${SPARTAN_COMPONENTS_BASE}/${componentName}`;
-      const html = await fetchContent(componentUrl, "html", false);
-      const apiData = extractAPIInfo(html);
-      const codeBlocks = extractCodeBlocks(html);
-
-      const relevantAPI =
-        variant === "brain" ? apiData.brainAPI : apiData.helmAPI;
-      const firstExample = codeBlocks[0] || "No examples available";
+      const apiData = await getComponentAPI(componentName);
+      const relevantAPI = apiData
+        ? variant === "brain" ? apiData.brainAPI : apiData.helmAPI
+        : [];
+      const firstExample = apiData?.examples?.[0]?.code || "// Use spartan_components_source to get full source code";
 
       return {
         messages: [
@@ -74,37 +69,30 @@ The **${componentName}** component is available at: ${componentUrl}
 ${
   relevantAPI.length > 0
     ? `
-This component has ${relevantAPI.length} ${variant} API component(s):
+This component has ${relevantAPI.length} ${variant} API directive(s):
 
 ${relevantAPI
   .map(
     (comp, i) => `
 ### ${i + 1}. ${comp.name}
-${comp.selector ? `**Selector**: \`${comp.selector}\`` : ""}
+**Selector**: \`${comp.selector}\`
+**Source**: \`${comp.file}\`
 
-**Inputs**:
+${comp.inputs.length > 0 ? `**Inputs**:
 ${comp.inputs
-  .map(
-    (input) =>
-      `- \`${input.prop}\`: ${input.type}${
-        input.default !== "-" ? ` (default: ${input.default})` : ""
-      }`
-  )
-  .join("\n")}
+  .map((input) => `- \`${input.name}\`: \`${input.type}\`${input.defaultValue ? ` = ${input.defaultValue}` : ""}${input.required ? " (required)" : ""}${input.description ? ` — ${input.description}` : ""}`)
+  .join("\n")}` : ""}
 
-${
-  comp.outputs.length > 0
-    ? `**Outputs**:
-${comp.outputs
-  .map((output) => `- \`${output.prop}\`: ${output.type}`)
-  .join("\n")}`
-    : ""
-}
+${comp.outputs.length > 0 ? `**Outputs**:
+${comp.outputs.map((output) => `- \`${output.name}\`: \`${output.type}\``).join("\n")}` : ""}
+
+${comp.models.length > 0 ? `**Models (two-way binding)**:
+${comp.models.map((m) => `- \`${m.name}\`: \`${m.type}\``).join("\n")}` : ""}
 `
   )
   .join("\n")}
 `
-    : `No ${variant} API components found.`
+    : `No ${variant} API directives found for this component. Try the other layer.`
 }
 
 ## Quick Start Example
@@ -116,13 +104,11 @@ ${firstExample}
 ## Installation
 
 \`\`\`bash
-npm install @spartan-ng/${
-                variant === "brain" ? "brain" : "helm"
-              }/${componentName}
+npx ng g @spartan-ng/cli:ui ${componentName}
 \`\`\`
 
 ## Next Steps
-1. Import the component in your Angular module/component
+1. The CLI generator adds all required imports and dependencies
 2. Use the selector in your template
 3. Configure inputs as needed
 4. Check the documentation for more examples: ${componentUrl}
@@ -151,8 +137,9 @@ npm install @spartan-ng/${
       }
 
       const componentUrl = `${SPARTAN_COMPONENTS_BASE}/${componentName}`;
-      const html = await fetchContent(componentUrl, "html", false);
-      const apiData = extractAPIInfo(html);
+      const apiData = (await getComponentAPI(componentName)) || {
+        brainAPI: [], helmAPI: [], brainCount: 0, helmCount: 0, examples: [],
+      };
 
       return {
         messages: [
@@ -208,7 +195,7 @@ ${apiData.helmAPI
 - **Outputs**: ${comp.outputs.length}
 - **Key Props**: ${comp.inputs
       .slice(0, 3)
-      .map((i) => i.prop)
+      .map((i) => i.name)
       .join(", ")}
 `
   )
@@ -276,9 +263,7 @@ More details: ${componentUrl}
       }
 
       const componentUrl = `${SPARTAN_COMPONENTS_BASE}/${componentName}`;
-      const html = await fetchContent(componentUrl, "html", false);
-      const apiData = extractAPIInfo(html);
-      const codeBlocks = extractCodeBlocks(html);
+      const apiData = await getComponentAPI(componentName);
 
       return {
         messages: [
@@ -297,98 +282,53 @@ More details: ${componentUrl}
 
 ## Component Overview
 **Documentation**: ${componentUrl}
-**Available APIs**: ${apiData.brainAPI.length} Brain + ${
-                apiData.helmAPI.length
-              } Helm
+**Available APIs**: ${apiData?.brainCount || 0} Brain + ${apiData?.helmCount || 0} Helm
 
 ## Relevant Component Properties
 ${
-  apiData.helmAPI.length > 0
+  apiData?.helmAPI?.length > 0
     ? `
 ### Helm API (${apiData.helmAPI[0].name})
-**Inputs you can use**:
-${apiData.helmAPI[0].inputs
-  .map(
-    (input) =>
-      `- \`${input.prop}\`: ${input.type} - ${
-        input.description || "No description"
-      }`
-  )
-  .join("\n")}
+**Selector**: \`${apiData.helmAPI[0].selector}\`
 
-${
-  apiData.helmAPI[0].outputs.length > 0
-    ? `**Events you can listen to**:
+${apiData.helmAPI[0].inputs.length > 0 ? `**Inputs you can use**:
+${apiData.helmAPI[0].inputs
+  .map((input) => `- \`${input.name}\`: \`${input.type}\`${input.description ? ` — ${input.description}` : ""}`)
+  .join("\n")}` : "No configurable inputs."}
+
+${apiData.helmAPI[0].outputs.length > 0 ? `**Events you can listen to**:
 ${apiData.helmAPI[0].outputs
-  .map((output) => `- \`${output.prop}\`: ${output.type}`)
-  .join("\n")}`
-    : ""
-}
+  .map((output) => `- \`${output.name}\`: \`${output.type}\``)
+  .join("\n")}` : ""}
 `
     : ""
 }
 
 ## Example Implementation (${framework})
 
-Here's a working example to get you started:
-
 \`\`\`typescript
-${
-  codeBlocks[0] ||
-  `// Basic example
-import { Component } from '@angular/core';
-import { Hlm${
-    componentName.charAt(0).toUpperCase() + componentName.slice(1)
-  }Imports } from '@spartan-ng/helm/${componentName}';
-
-@Component({
-  selector: 'app-feature',
-  standalone: true,
-  imports: [Hlm${
-    componentName.charAt(0).toUpperCase() + componentName.slice(1)
-  }Imports],
-  template: \`
-    <!-- Your template here -->
-  \`
-})
-export class FeatureComponent {
-  // Your implementation
-}
-`
-}
+${apiData?.examples?.[0]?.code || "// Use spartan_components_source for full source code examples"}
 \`\`\`
 
 ## Implementation Steps
 
-1. **Install the component**:
+1. **Install the component** (adds all dependencies automatically):
    \`\`\`bash
-   npm install @spartan-ng/helm/${componentName}
+   npx ng g @spartan-ng/cli:ui ${componentName}
    \`\`\`
 
 2. **Import in your component**:
-   Add the imports shown in the example above
+   Use the directives/components shown in the API section above
 
 3. **Configure for "${feature}"**:
    - Use relevant inputs from the API table
    - Wire up event handlers if needed
-   - Add any necessary form controls
 
 4. **Style and customize**:
    - Use Tailwind classes for styling
-   - Refer to ${codeBlocks.length} available examples at ${componentUrl}
+   - Check ${apiData?.exampleCount || 0} available examples at ${componentUrl}
 
-## Additional Examples
-${
-  codeBlocks.length > 1
-    ? `
-Check out ${
-        codeBlocks.length - 1
-      } more examples in the documentation for advanced use cases.
-`
-    : ""
-}
-
-Need more help? Check the full documentation: ${componentUrl}
+Need more help? Use \`spartan_components_source\` for full TypeScript source code.
 `,
             },
           },
@@ -414,8 +354,7 @@ Need more help? Check the full documentation: ${componentUrl}
       }
 
       const componentUrl = `${SPARTAN_COMPONENTS_BASE}/${componentName}`;
-      const html = await fetchContent(componentUrl, "html", false);
-      const apiData = extractAPIInfo(html);
+      const apiData = await getComponentAPI(componentName);
 
       return {
         messages: [
@@ -437,30 +376,22 @@ Need more help? Check the full documentation: ${componentUrl}
 
 ## Common Issues & Solutions
 
-### 1. ✅ Check Imports
-Make sure you have the correct imports:
-\`\`\`typescript
-// For Helm API (styled)
-import { Hlm${
-                componentName.charAt(0).toUpperCase() + componentName.slice(1)
-              }Imports } from '@spartan-ng/helm/${componentName}';
-
-// For Brain API (unstyled)
-import { Brn${
-                componentName.charAt(0).toUpperCase() + componentName.slice(1)
-              }Imports } from '@spartan-ng/brain/${componentName}';
+### 1. ✅ Install/Reinstall the Component
+The Spartan CLI handles all imports and dependencies:
+\`\`\`bash
+npx ng g @spartan-ng/cli:ui ${componentName}
 \`\`\`
 
 ### 2. ✅ Verify Required Props
 ${
-  apiData.helmAPI.length > 0
+  apiData?.helmAPI?.length > 0
     ? `
-Check if you're missing required inputs:
+Check if you're missing required inputs for **${apiData.helmAPI[0].name}** (\`${apiData.helmAPI[0].selector}\`):
 ${
   apiData.helmAPI[0].inputs
-    .filter((i) => i.description?.includes("required") || i.default === "-")
-    .map((input) => `- \`${input.prop}\`: ${input.type}`)
-    .join("\n") || "No required props found."
+    .filter((i) => i.required)
+    .map((input) => `- \`${input.name}\`: \`${input.type}\` (required)`)
+    .join("\n") || "No required inputs found."
 }
 `
     : ""
@@ -469,31 +400,18 @@ ${
 ### 3. ✅ Check Angular Version
 Spartan UI requires Angular 17+ with standalone components support.
 
-### 4. ✅ Verify Dependencies
-\`\`\`bash
-npm install @spartan-ng/helm/${componentName}
-# May also need:
-npm install @angular/cdk
-\`\`\`
-
-### 5. ✅ Review API Documentation
-**Component API**: ${
-                apiData.brainAPI.length + apiData.helmAPI.length
-              } components available
+### 4. ✅ Review API Documentation
+**Brain directives**: ${apiData?.brainCount || 0}
+**Helm directives**: ${apiData?.helmCount || 0}
 **Full docs**: ${componentUrl}
 
 ${
-  apiData.helmAPI.length > 0
+  apiData?.helmAPI?.length > 0
     ? `
-## Available Props for ${apiData.helmAPI[0].name}
+## Available Inputs for ${apiData.helmAPI[0].name}
 ${apiData.helmAPI[0].inputs
-  .map(
-    (input) =>
-      `- \`${input.prop}\`: ${input.type}${
-        input.default !== "-" ? ` = ${input.default}` : ""
-      }`
-  )
-  .join("\n")}
+  .map((input) => `- \`${input.name}\`: \`${input.type}\`${input.defaultValue ? ` = ${input.defaultValue}` : ""}`)
+  .join("\n") || "No inputs."}
 `
     : ""
 }
@@ -501,10 +419,8 @@ ${apiData.helmAPI[0].inputs
 ## Next Steps
 1. Compare your code with examples: ${componentUrl}
 2. Check browser console for errors
-3. Verify all imports are correct
+3. Use \`spartan_components_source\` with layer='helm' to see the actual source code
 4. Check if the issue is styling-related (try Brain API to isolate)
-
-Still stuck? Provide more details about your setup and error messages.
 `,
             },
           },
@@ -522,29 +438,46 @@ Still stuck? Provide more details about your setup and error messages.
       const categories = {
         "Form Controls": [
           "button",
+          "button-group",
           "checkbox",
+          "field",
+          "form-field",
           "input",
+          "input-group",
+          "input-otp",
           "label",
+          "native-select",
           "radio-group",
           "select",
+          "slider",
           "switch",
           "textarea",
           "toggle",
           "toggle-group",
-          "slider",
-          "input-otp",
         ],
         "Data Display": [
           "table",
+          "data-table",
           "card",
           "badge",
           "avatar",
+          "empty",
+          "item",
+          "kbd",
           "separator",
           "progress",
           "skeleton",
           "spinner",
         ],
-        Navigation: ["breadcrumb", "menubar", "pagination", "tabs", "command"],
+        Navigation: [
+          "breadcrumb",
+          "menubar",
+          "navigation-menu",
+          "pagination",
+          "sidebar",
+          "tabs",
+          "command",
+        ],
         Feedback: [
           "alert",
           "alert-dialog",
@@ -556,13 +489,14 @@ Still stuck? Provide more details about your setup and error messages.
         Overlay: ["popover", "dropdown-menu", "context-menu", "sheet"],
         Layout: [
           "aspect-ratio",
+          "resizable",
           "scroll-area",
           "collapsible",
           "accordion",
           "carousel",
         ],
         "Date & Time": ["calendar", "date-picker"],
-        Advanced: ["data-table", "form-field", "combobox", "icon"],
+        Advanced: ["autocomplete", "combobox", "icon"],
       };
 
       const categorizedList = Object.entries(categories)
@@ -593,20 +527,108 @@ ${availableComponents
               text: `# Spartan UI Component Library
 
 **Total Components**: ${KNOWN_COMPONENTS.length}
+**Total Block Variants**: ${Object.values(KNOWN_BLOCKS).flat().length}
 **Documentation**: https://www.spartan.ng
 
 ${categorizedList}
 
-## How to Use
-1. Pick a component from above
-2. Use the prompt: \`spartan-get-started\` with the component name
-3. Or access directly: \`spartan://component/<name>/api\`
+## Building Blocks (Page-Level Templates)
+${Object.entries(KNOWN_BLOCKS)
+  .map(
+    ([cat, variants]) =>
+      `### ${cat.charAt(0).toUpperCase() + cat.slice(1)} (${variants.length} variants)
+${variants.map((v) => `- **${v}**`).join("\n")}`
+  )
+  .join("\n\n")}
 
-## Quick Links
-- 📚 **Get Started**: Use \`spartan-get-started\` prompt
-- 🔍 **Compare APIs**: Use \`spartan-compare-apis\` prompt
-- 🛠️ **Implement Feature**: Use \`spartan-implement-feature\` prompt
-- 🐛 **Troubleshoot**: Use \`spartan-troubleshoot\` prompt
+## How to Use
+- **Components**: \`spartan_components_get\` for docs, \`spartan_components_source\` for source
+- **Blocks**: \`spartan_blocks_get\` for full source code
+- **Prompts**: \`spartan-get-started\`, \`spartan-compare-apis\`, \`spartan-use-block\`
+`,
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  // Prompt 6: Use a building block
+  server.prompt(
+    "spartan-use-block",
+    "Get help using a Spartan UI building block in your project",
+    {
+      category: z
+        .string()
+        .describe("Block category: sidebar, login, signup, or calendar"),
+      variant: z
+        .string()
+        .optional()
+        .describe(
+          "Specific variant (e.g., 'sidebar-sticky-header'). Omit to see all variants."
+        ),
+    },
+    async (args) => {
+      const category = args.category.toLowerCase();
+      const variants = KNOWN_BLOCKS[category];
+
+      if (!variants) {
+        throw new Error(
+          `Unknown block category: ${category}. Available: ${BLOCK_CATEGORIES.join(", ")}`
+        );
+      }
+
+      const variant = args.variant || variants[0];
+      if (!variants.includes(variant)) {
+        throw new Error(
+          `Unknown variant: ${variant}. Available in ${category}: ${variants.join(", ")}`
+        );
+      }
+
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `Help me use the Spartan UI ${category} block (variant: ${variant}) in my Angular project.`,
+            },
+          },
+          {
+            role: "assistant",
+            content: {
+              type: "text",
+              text: `# Using Spartan UI Block: ${category}/${variant}
+
+## What are Blocks?
+Blocks are **page-level building blocks** — complete Angular components that combine multiple Spartan UI components into production-ready layouts. Unlike individual components, blocks give you entire page sections.
+
+## Available Variants in "${category}"
+${variants.map((v, i) => `${i + 1}. **${v}**`).join("\n")}
+
+## Getting the Source Code
+Use the \`spartan_blocks_get\` tool to fetch the complete source:
+
+\`\`\`
+Tool: spartan_blocks_get
+  category: "${category}"
+  variant: "${variant}"
+  includeShared: true
+\`\`\`
+
+This returns the full TypeScript component code with template, imports, and logic.
+
+## Integration Steps
+1. **Fetch the block source** using \`spartan_blocks_get\`
+2. **Install required Spartan components** based on the \`spartanImports\` in the response
+3. **Copy and adapt** the component code to your project
+4. **Customize** the template, data, and styling to match your needs
+
+## Tips
+- Blocks use **Reactive Forms** for login/signup variants
+- Sidebar blocks use shared nav components — set \`includeShared: true\`
+- Calendar blocks showcase advanced date picking patterns
+- All blocks use Tailwind CSS for styling
 `,
             },
           },

@@ -6,9 +6,14 @@ import {
   extractCodeBlocks,
   extractHeadings,
   extractLinks,
-  extractAPIInfo,
+  getComponentAPI,
 } from "./utils.js";
 import { cacheManager } from "./cache.js";
+import {
+  fetchGitHubDirectory,
+  fetchGitHubFile,
+  fetchGitHubDirectoryFiles,
+} from "./github.js";
 
 export function registerComponentTools(server) {
   // List components
@@ -17,8 +22,9 @@ export function registerComponentTools(server) {
     {
       title: "List Spartan UI components",
       description:
-        "Returns a list of known Spartan Angular UI components with their documentation URLs. " +
-        "Use this to discover available components, then call spartan_components_get with specific component names to get detailed API documentation.",
+        "Returns all available Spartan Angular UI components (57+) with documentation URLs. " +
+        "Each component has Brain API (headless primitives) and/or Helm API (styled wrappers). " +
+        "Use spartan_components_get for docs, spartan_components_source for TypeScript source code.",
       inputSchema: {},
     },
     async () => {
@@ -26,13 +32,11 @@ export function registerComponentTools(server) {
         name,
         url: `${SPARTAN_COMPONENTS_BASE}/${name}`,
       }));
-      const responseText =
-        JSON.stringify({ components: items }, null, 2) +
-        "\n\nPROCESSING INSTRUCTIONS:\n" +
-        "- This list contains all available Spartan UI components\n" +
-        "- Use spartan_components_get with any component name to get detailed API documentation\n" +
-        "- Each component has Brain API (Brn*) and Helm API (Hlm*) variants\n" +
-        "- Always present component options and APIs when helping users";
+      const responseText = JSON.stringify(
+        { components: items, totalComponents: items.length },
+        null,
+        2
+      );
       return {
         content: [
           {
@@ -50,10 +54,10 @@ export function registerComponentTools(server) {
     {
       title: "Get component documentation",
       description:
-        "Fetch the Spartan UI documentation page for a given component (e.g., 'accordion'). " +
-        "IMPORTANT: The response contains comprehensive API information including Brain API (Brn*) and Helm API (Hlm*) components with their inputs, outputs, selectors, and examples. " +
-        "Always parse and present the API tables, code examples, and component specifications from the response. " +
-        "Look for structured sections like 'Brain API', 'Helm API', and 'Examples' in the response.",
+        "Fetch Spartan UI documentation for a component from spartan.ng. Returns Brain API " +
+        "(Brn* headless directives) and Helm API (Hlm* styled components) with inputs, outputs, " +
+        "selectors, and code examples. Use extract='api' for structured JSON, extract='code' for " +
+        "code blocks only. For actual TypeScript source, use spartan_components_source instead.",
       inputSchema: {
         name: z
           .string()
@@ -65,9 +69,10 @@ export function registerComponentTools(server) {
           .describe("Return format: raw HTML or plain text."),
         extract: z
           .enum(["none", "code", "headings", "links", "api"])
-          .default("code")
+          .default("api")
           .describe(
-            "Optional extraction: 'code' for code blocks, 'headings' for section headers, 'links' for URLs, 'api' for structured API information.",
+            "Extraction mode. 'api' (default, recommended): structured JSON from Analog API. " +
+            "'code': code blocks from website. 'headings'/'links': HTML parsing. 'none': raw page.",
           ),
         noCache: z.boolean().default(false).describe("Bypass cache when true."),
         spartanVersion: z
@@ -85,73 +90,46 @@ export function registerComponentTools(server) {
         .trim()
         .toLowerCase();
       if (!name) throw new Error("Missing component name");
-
-      // Initialize cache with version (defaults to "latest")
-      await cacheManager.initialize(args.spartanVersion);
-
-      const url = `${SPARTAN_COMPONENTS_BASE}/${encodeURIComponent(name)}`;
-      const format = args.format === "text" ? "text" : "html";
-      const extract = args.extract || "code";
-      const noCache = Boolean(args.noCache);
-
-      let content;
-      let cacheInfo = "";
-
-      // Try cache first if not bypassed
-      if (!noCache) {
-        const cached = await cacheManager.getComponent(name, "full");
-        if (cached.cached && !cached.stale) {
-          // Use cached data
-          if (format === "text") {
-            content = cached.data.html; // Will be converted below if needed
-          } else {
-            content = cached.data.html;
-          }
-          cacheInfo = `\n[📦 CACHED DATA - Version: ${cached.version}, Cached at: ${cached.cachedAt}]`;
-        } else if (cached.cached && cached.stale) {
-          // Cache exists but stale - fetch fresh and update
-          content = await fetchContent(url, format, true);
-          const html = format === "text" ? content : content;
-          const api = extractAPIInfo(/** @type {string} */ (html));
-          const examples = extractCodeBlocks(/** @type {string} */ (html));
-          await cacheManager.setComponent(name, {
-            html,
-            api,
-            examples,
-            full: { html, api, examples, url },
-          });
-          cacheInfo = `\n[🔄 CACHE REFRESHED - Version: ${cacheManager.currentVersion}]`;
-        } else {
-          // No cache - fetch and cache
-          content = await fetchContent(url, format, true);
-          const html = format === "text" ? content : content;
-          const api = extractAPIInfo(/** @type {string} */ (html));
-          const examples = extractCodeBlocks(/** @type {string} */ (html));
-          await cacheManager.setComponent(name, {
-            html,
-            api,
-            examples,
-            full: { html, api, examples, url },
-          });
-          cacheInfo = `\n[✨ NEWLY CACHED - Version: ${cacheManager.currentVersion}]`;
-        }
-      } else {
-        // Bypass cache completely
-        content = await fetchContent(url, format, true);
-        cacheInfo = "\n[🌐 LIVE FETCH - Cache bypassed]";
+      if (!KNOWN_COMPONENTS.includes(name)) {
+        throw new Error(
+          `Unknown component: "${name}". Use spartan_components_list to see available components.`
+        );
       }
 
-      if (extract === "none" || format === "text") {
-        const responseText =
-          `${content}${cacheInfo}\n\nSource: ${url}\n\n` +
-          "PROCESSING INSTRUCTIONS:\n" +
-          "- This response contains detailed API documentation\n" +
-          "- Look for 'Brain API' and 'Helm API' sections, etc. look out for all headers and other sections\n" +
-          "- Extract component selectors, inputs, outputs, and examples\n" +
-          "- Present API information in structured format\n" +
-          "- Include code examples and usage patterns";
+      const url = `${SPARTAN_COMPONENTS_BASE}/${encodeURIComponent(name)}`;
+      const extract = args.extract;
+      const noCache = Boolean(args.noCache);
+
+      // For 'api' extraction (default and recommended), use the Analog API
+      // which returns perfect structured data in a single request.
+      if (extract === "api") {
+        const apiData = await getComponentAPI(name, noCache);
+        if (!apiData) {
+          throw new Error(`No API data found for component "${name}".`);
+        }
         return {
-          content: [{ type: "text", text: responseText }],
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                { ...apiData, url, source: "spartan-analog-api" },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
+
+      // For other extractions, fall back to website scraping
+      const format = args.format === "text" ? "text" : "html";
+      const content = await fetchContent(url, format, noCache);
+
+      if (extract === "none" || format === "text") {
+        return {
+          content: [
+            { type: "text", text: `${content}\n\nSource: ${url}` },
+          ],
         };
       }
 
@@ -162,21 +140,180 @@ export function registerComponentTools(server) {
       if (extract === "code") extracted = extractCodeBlocks(html);
       else if (extract === "headings") extracted = extractHeadings(html);
       else if (extract === "links") extracted = extractLinks(html);
-      else if (extract === "api") extracted = extractAPIInfo(html);
       else extracted = [];
-      const payload = {
-        url,
-        extract,
-        count: Array.isArray(extracted) ? extracted.length : 0,
-        data: extracted,
-        cacheInfo: cacheInfo.trim(),
-        version: cacheManager.currentVersion,
-        processingInstructions:
-          "Always parse and present the API information, code examples, and component specifications from this data.",
-      };
       return {
-        content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              { url, extract, count: Array.isArray(extracted) ? extracted.length : 0, data: extracted },
+              null,
+              2
+            ),
+          },
+        ],
       };
     },
   );
+
+  // Get component TypeScript source code from GitHub
+  server.registerTool(
+    "spartan_components_source",
+    {
+      title: "Get component TypeScript source",
+      description:
+        "Fetch the actual TypeScript source code for a Spartan UI component library from GitHub. " +
+        "Returns the real directive/component files with exact type definitions, decorators, inputs, " +
+        "outputs, and implementation details. Use layer='brain' for headless primitives, " +
+        "layer='helm' for styled components, or layer='both' for everything. " +
+        "This complements spartan_components_get (which returns website documentation) by " +
+        "providing the authoritative source code. Not all components have a Brain library — " +
+        "some are Helm-only (e.g., badge, card, icon, spinner).",
+      inputSchema: {
+        name: z
+          .string()
+          .min(1)
+          .describe("Component name in kebab-case (e.g., 'dialog', 'sidebar')."),
+        layer: z
+          .enum(["brain", "helm", "both"])
+          .default("helm")
+          .describe(
+            "Which API layer to fetch: 'brain' (headless), 'helm' (styled), or 'both'."
+          ),
+        noCache: z
+          .boolean()
+          .default(false)
+          .describe("Bypass cache and fetch fresh from GitHub."),
+      },
+    },
+    async (args) => {
+      const name = String(args.name || "").trim().toLowerCase();
+      if (!name) throw new Error("Missing component name");
+      if (!KNOWN_COMPONENTS.includes(name)) {
+        throw new Error(
+          `Unknown component: "${name}". Use spartan_components_list to see available components.`
+        );
+      }
+
+      await cacheManager.initialize();
+      const layers = args.layer === "both" ? ["brain", "helm"] : [args.layer];
+      const results = {};
+
+      for (const layer of layers) {
+        // Try cache first
+        if (!args.noCache) {
+          const cached = await cacheManager.getSource(name, layer);
+          if (cached.cached && !cached.stale) {
+            results[layer] = cached.data;
+            continue;
+          }
+        }
+
+        // Fetch from GitHub
+        const libPath = `libs/${layer}/${name}/src`;
+        try {
+          // First check if the library exists
+          const srcEntries = await fetchGitHubDirectory(libPath, args.noCache);
+          const libDir = srcEntries.find((e) => e.name === "lib" && e.type === "dir");
+          const indexFile = srcEntries.find((e) => e.name === "index.ts");
+
+          const files = [];
+
+          // Fetch index.ts for exports
+          if (indexFile) {
+            const indexData = await fetchGitHubFile(indexFile.path, args.noCache);
+            files.push({
+              name: "index.ts",
+              content: indexData.content,
+              path: indexFile.path,
+            });
+          }
+
+          // Fetch lib/ directory files
+          if (libDir) {
+            const libFiles = await fetchGitHubDirectoryFiles(
+              libDir.path,
+              args.noCache
+            );
+            files.push(...libFiles);
+          }
+
+          const layerData = {
+            component: name,
+            layer,
+            files: files.map((f) => ({
+              name: f.name,
+              content: f.content,
+            })),
+            fileCount: files.length,
+            exports: indexFile
+              ? extractExportsFromIndex(
+                  files.find((f) => f.name === "index.ts")?.content || ""
+                )
+              : [],
+          };
+
+          // Cache
+          await cacheManager.setSource(name, layer, layerData);
+          results[layer] = layerData;
+        } catch (err) {
+          if (err.message.includes("not found")) {
+            results[layer] = {
+              component: name,
+              layer,
+              available: false,
+              reason: `No ${layer} library found for "${name}". This component may be ${layer === "brain" ? "Helm" : "Brain"}-only.`,
+            };
+          } else {
+            throw err;
+          }
+        }
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                component: name,
+                requestedLayer: args.layer,
+                ...results,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+}
+
+/**
+ * Extract export names from an index.ts file.
+ * @param {string} content
+ * @returns {string[]}
+ */
+function extractExportsFromIndex(content) {
+  const exports = [];
+  // Match "export * from './lib/something'" and "export { Name } from..."
+  const reExportRegex = /export\s*\*\s*from\s*['"]([^'"]+)['"]/g;
+  const namedExportRegex = /export\s*\{([^}]+)\}/g;
+  const constExportRegex = /export\s+const\s+(\w+)/g;
+
+  let match;
+  while ((match = reExportRegex.exec(content)) !== null) {
+    const modulePath = match[1];
+    const moduleName = modulePath.split("/").pop();
+    exports.push(`* from ${moduleName}`);
+  }
+  while ((match = namedExportRegex.exec(content)) !== null) {
+    const names = match[1].split(",").map((s) => s.trim()).filter(Boolean);
+    exports.push(...names);
+  }
+  while ((match = constExportRegex.exec(content)) !== null) {
+    exports.push(match[1]);
+  }
+  return [...new Set(exports)];
 }

@@ -1,6 +1,8 @@
 //@ts-check
 import {
   KNOWN_COMPONENTS,
+  KNOWN_BLOCKS,
+  BLOCK_CATEGORIES,
   SPARTAN_COMPONENTS_BASE,
   SPARTAN_DOCS_BASE,
 } from "./utils.js";
@@ -22,6 +24,12 @@ export function registerMetaTools(server) {
         "typography",
         "health-checks",
         "update-guide",
+        "cli",
+        "components-json",
+        "version-support",
+        "figma",
+        "changelog",
+        "about",
         "analog-dark-mode",
       ];
       const responseData = {
@@ -36,20 +44,25 @@ export function registerMetaTools(server) {
           name: n,
           url: `${SPARTAN_COMPONENTS_BASE}/${n}`,
         })),
+        blocks: Object.entries(KNOWN_BLOCKS).map(([category, variants]) => ({
+          category,
+          variants,
+          variantCount: variants.length,
+        })),
+        totalComponents: KNOWN_COMPONENTS.length,
+        totalBlockVariants: Object.values(KNOWN_BLOCKS).flat().length,
         usage: {
-          "spartan.docs.get": "Fetch documentation topics",
-          "spartan.components.get":
-            "Fetch component APIs with extract='api' for structured data",
-          "spartan.components.list": "List all available components",
+          "spartan_docs_get": "Fetch documentation topics",
+          "spartan_components_get":
+            "Fetch component docs with extract='api' for structured Brain/Helm API data",
+          "spartan_components_list": "List all available components",
+          "spartan_components_source":
+            "Fetch actual TypeScript source code from GitHub",
+          "spartan_blocks_list": "List all building block categories and variants",
+          "spartan_blocks_get": "Fetch block source code from GitHub",
         },
       };
-      const responseText =
-        JSON.stringify(responseData, null, 2) +
-        "\n\nPROCESSING INSTRUCTIONS:\n" +
-        "- Use this metadata to understand available topics and components\n" +
-        "- Always fetch component documentation with extract='api' for structured API data\n" +
-        "- Parse and present Brain API and Helm API information from responses\n" +
-        "- Include code examples and usage patterns in your responses";
+      const responseText = JSON.stringify(responseData, null, 2);
       return {
         content: [
           {

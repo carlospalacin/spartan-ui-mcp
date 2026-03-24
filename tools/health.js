@@ -20,10 +20,16 @@ export function registerHealthTools(server) {
               "typography",
               "health-checks",
               "update-guide",
+              "cli",
+              "components-json",
+              "version-support",
+              "figma",
+              "changelog",
+              "about",
             ])
           )
           .optional()
-          .describe("Docs topics to check; defaults to a standard set."),
+          .describe("Docs topics to check; defaults to a small representative set."),
         components: z
           .array(z.string())
           .optional()
@@ -36,14 +42,7 @@ export function registerHealthTools(server) {
       const topics =
         args.topics && Array.isArray(args.topics)
           ? args.topics
-          : [
-              "installation",
-              "theming",
-              "dark-mode",
-              "typography",
-              "health-checks",
-              "update-guide",
-            ];
+          : ["installation", "theming", "dark-mode", "cli"];
       const components =
         args.components && Array.isArray(args.components)
           ? args.components
@@ -51,9 +50,12 @@ export function registerHealthTools(server) {
       const checks = [];
       const checkUrl = async (label, url) => {
         const start = Date.now();
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
         try {
           const res = await fetch(url, {
-            headers: { "User-Agent": "spartan-ui-mcp/1.0" },
+            headers: { "User-Agent": "spartan-ui-mcp/2.0" },
+            signal: controller.signal,
           });
           const ok = res.ok;
           const status = res.status;
@@ -67,8 +69,10 @@ export function registerHealthTools(server) {
             ok: false,
             status: 0,
             ms,
-            error: String(err),
+            error: err.name === "AbortError" ? "Request timed out" : "Request failed",
           });
+        } finally {
+          clearTimeout(timeout);
         }
       };
       for (const t of topics) {

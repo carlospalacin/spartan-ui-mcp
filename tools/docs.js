@@ -25,10 +25,18 @@ export function registerDocsTools(server) {
             "typography",
             "health-checks",
             "update-guide",
+            "cli",
+            "components-json",
+            "version-support",
+            "figma",
+            "changelog",
+            "about",
             "analog-dark-mode",
           ])
           .describe(
-            "Documentation topic to fetch. Includes 'analog-dark-mode' external article."
+            "Documentation topic to fetch. Topics: installation, theming, dark-mode, typography, " +
+            "health-checks, update-guide, cli, components-json, version-support, figma, changelog, " +
+            "about, analog-dark-mode (external article)."
           ),
         format: z
           .enum(["html", "text"])

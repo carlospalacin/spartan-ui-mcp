@@ -12,10 +12,12 @@ export const KNOWN_COMPONENTS = [
   "alert",
   "alert-dialog",
   "aspect-ratio",
+  "autocomplete",
   "avatar",
   "badge",
   "breadcrumb",
   "button",
+  "button-group",
   "calendar",
   "card",
   "carousel",
@@ -28,23 +30,30 @@ export const KNOWN_COMPONENTS = [
   "date-picker",
   "dialog",
   "dropdown-menu",
-  // "form", // soon
+  "empty",
+  "field",
   "form-field",
   "hover-card",
   "icon",
   "input",
+  "input-group",
   "input-otp",
+  "item",
+  "kbd",
   "label",
   "menubar",
-  // "navigation-menu", // soon
+  "native-select",
+  "navigation-menu",
   "pagination",
   "popover",
   "progress",
   "radio-group",
+  "resizable",
   "scroll-area",
   "select",
   "separator",
   "sheet",
+  "sidebar",
   "skeleton",
   "slider",
   "sonner",
@@ -57,6 +66,257 @@ export const KNOWN_COMPONENTS = [
   "toggle-group",
   "tooltip",
 ];
+
+/**
+ * Known Spartan UI block categories and their variants.
+ * Blocks are page-level building blocks (complete Angular components).
+ * Source code lives on GitHub — blocks have no API docs page on the website.
+ */
+export const KNOWN_BLOCKS = {
+  sidebar: ["sidebar-sticky-header", "sidebar-inset"],
+  login: [
+    "login-simple-reactive-form",
+    "login-two-column-reactive-form",
+  ],
+  signup: [
+    "signup-simple-reactive-form",
+    "signup-two-column-reactive-form",
+  ],
+  calendar: [
+    "calendar-simple",
+    "calendar-multi",
+    "calendar-date-picker",
+    "calendar-date-picker-with-button",
+    "calendar-date-picker-multi",
+    "calendar-date-picker-range",
+    "calendar-disabled-days",
+    "calendar-disabled-weekends",
+    "calendar-date-time-picker",
+    "calendar-month-year-dropdown",
+    "calendar-localized",
+  ],
+};
+
+/** All block category names */
+export const BLOCK_CATEGORIES = /** @type {Array<keyof typeof KNOWN_BLOCKS>} */ (
+  Object.keys(KNOWN_BLOCKS)
+);
+
+/**
+ * GitHub paths for block source code in the spartan-ng/spartan repo.
+ * sidebar/login/signup live under blocks-preview, calendar under blocks.
+ */
+export const BLOCK_GITHUB_PATHS = {
+  sidebar:
+    "apps/app/src/app/pages/(blocks-preview)/blocks-preview",
+  login:
+    "apps/app/src/app/pages/(blocks-preview)/blocks-preview",
+  signup:
+    "apps/app/src/app/pages/(blocks-preview)/blocks-preview",
+  calendar:
+    "apps/app/src/app/pages/(blocks)/blocks/calendar",
+};
+
+/** GitHub path for shared block utilities (sidebar nav components, data, etc.) */
+export const BLOCK_SHARED_PATH =
+  "apps/app/src/app/pages/(blocks-preview)/blocks-preview/shared";
+
+/**
+ * Canonical component dependency graph from spartan-ng/cli.
+ * Source: libs/cli/src/generators/ui/primitive-deps.ts
+ * @type {Record<string, string[]>}
+ */
+export const COMPONENT_DEPENDENCIES = {
+  accordion: ["utils", "icon"],
+  alert: ["utils", "icon"],
+  "alert-dialog": ["utils", "button"],
+  "aspect-ratio": ["utils"],
+  autocomplete: ["utils", "popover", "icon", "input-group"],
+  avatar: ["utils"],
+  badge: ["utils"],
+  breadcrumb: ["utils", "icon"],
+  button: ["utils"],
+  "button-group": ["utils", "button"],
+  calendar: ["utils", "button", "icon", "select"],
+  card: ["utils"],
+  carousel: ["utils", "button", "icon"],
+  checkbox: ["utils", "icon"],
+  collapsible: ["utils"],
+  combobox: ["utils", "input-group", "button", "icon"],
+  command: ["utils", "button", "icon"],
+  "context-menu": ["utils", "dropdown-menu"],
+  "data-table": ["utils", "table", "button", "checkbox", "icon", "select", "input"],
+  "date-picker": ["utils", "calendar", "icon", "popover"],
+  dialog: ["utils", "icon"],
+  "dropdown-menu": ["utils", "icon"],
+  empty: ["utils"],
+  field: ["utils", "label", "separator"],
+  "form-field": ["utils"],
+  "hover-card": ["utils"],
+  icon: [],
+  input: ["utils"],
+  "input-group": ["utils", "button", "input", "textarea"],
+  "input-otp": ["utils", "icon"],
+  item: ["utils", "separator"],
+  kbd: ["utils"],
+  label: ["utils"],
+  menubar: ["utils", "dropdown-menu"],
+  "native-select": ["utils", "icon"],
+  "navigation-menu": ["utils"],
+  pagination: ["utils", "button", "icon", "select"],
+  popover: ["utils"],
+  progress: ["utils"],
+  "radio-group": ["utils"],
+  resizable: ["utils"],
+  "scroll-area": ["utils"],
+  select: ["utils", "icon"],
+  separator: ["utils"],
+  sheet: ["utils", "icon", "button"],
+  sidebar: ["utils", "button", "icon", "input", "separator", "sheet", "skeleton", "tooltip"],
+  skeleton: ["utils"],
+  slider: ["utils"],
+  sonner: ["utils"],
+  spinner: ["utils"],
+  switch: ["utils"],
+  table: ["utils"],
+  tabs: ["utils", "icon"],
+  textarea: ["utils"],
+  toggle: ["utils"],
+  "toggle-group": ["utils", "toggle"],
+  tooltip: [],
+};
+
+/**
+ * Spartan Analog API — returns structured JSON for ALL components in one request.
+ * This is the primary data source, far superior to HTML scraping.
+ */
+const SPARTAN_API_URL =
+  "https://www.spartan.ng/api/_analog/pages/(components)/components";
+
+/**
+ * @typedef {Object} SpartanDirectiveInfo
+ * @property {string} file - Source file path
+ * @property {string} selector - CSS selector
+ * @property {Array<{name: string, type: string, description: string, defaultValue: string|null, required: boolean}>} inputs
+ * @property {Array<{name: string, type: string, description: string}>} outputs
+ * @property {Array<{name: string, type: string, description: string, defaultValue: string}>} models
+ * @property {string} [exportAs]
+ */
+
+/**
+ * @typedef {Object} SpartanAPIData
+ * @property {Record<string, {brain: Record<string, SpartanDirectiveInfo>, helm: Record<string, SpartanDirectiveInfo>}>} docsData
+ * @property {Record<string, Record<string, string>>} primitivesData
+ * @property {Record<string, Record<string, string>>} manualInstallSnippets
+ */
+
+/** Cached Analog API data (heavy — loaded once, shared across tools) */
+let _spartanAPICache = /** @type {SpartanAPIData|null} */ (null);
+let _spartanAPICacheTimestamp = 0;
+const SPARTAN_API_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Fetch the complete Spartan component API data from the Analog endpoint.
+ * Returns structured JSON with docsData, primitivesData, and manualInstallSnippets
+ * for ALL components in a single request.
+ *
+ * @param {boolean} [noCache=false]
+ * @returns {Promise<SpartanAPIData>}
+ */
+export async function fetchSpartanAPI(noCache = false) {
+  const now = Date.now();
+  if (!noCache && _spartanAPICache && now - _spartanAPICacheTimestamp < SPARTAN_API_CACHE_TTL_MS) {
+    return _spartanAPICache;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000); // 30s for large payload
+
+  try {
+    const res = await fetch(SPARTAN_API_URL, {
+      headers: {
+        "User-Agent": "spartan-ui-mcp/2.0",
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Spartan API returned ${res.status}`);
+    }
+
+    const data = /** @type {SpartanAPIData} */ (await res.json());
+
+    // Validate basic structure
+    if (!data.docsData || !data.primitivesData) {
+      throw new Error("Spartan API response missing expected fields");
+    }
+
+    _spartanAPICache = data;
+    _spartanAPICacheTimestamp = now;
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Get structured API data for a specific component from the Analog API.
+ * Returns brain/helm directives with selectors, inputs, outputs, and code examples.
+ *
+ * @param {string} componentName
+ * @param {boolean} [noCache=false]
+ */
+export async function getComponentAPI(componentName, noCache = false) {
+  const api = await fetchSpartanAPI(noCache);
+  const docs = api.docsData[componentName];
+  const examples = api.primitivesData[componentName];
+  const installSnippets = api.manualInstallSnippets?.[componentName];
+
+  if (!docs) {
+    return null;
+  }
+
+  // Transform to a clean structure
+  const brainAPI = Object.entries(docs.brain || {}).map(([name, info]) => ({
+    name,
+    selector: info.selector,
+    file: info.file,
+    exportAs: info.exportAs || null,
+    inputs: info.inputs || [],
+    outputs: info.outputs || [],
+    models: info.models || [],
+  }));
+
+  const helmAPI = Object.entries(docs.helm || {}).map(([name, info]) => ({
+    name,
+    selector: info.selector,
+    file: info.file,
+    exportAs: info.exportAs || null,
+    inputs: info.inputs || [],
+    outputs: info.outputs || [],
+    models: info.models || [],
+  }));
+
+  const codeExamples = examples
+    ? Object.entries(examples).map(([variant, code]) => ({
+        variant,
+        code,
+        language: "typescript",
+      }))
+    : [];
+
+  return {
+    component: componentName,
+    brainAPI,
+    helmAPI,
+    examples: codeExamples,
+    installSnippets: installSnippets || null,
+    brainCount: brainAPI.length,
+    helmCount: helmAPI.length,
+    exampleCount: codeExamples.length,
+  };
+}
 
 /**
  * Minimal HTML -> text converter for callers that want plain text.
@@ -81,9 +341,16 @@ export function htmlToText(html) {
 }
 
 /**
- * Simple in-memory cache for fetched pages.
+ * Simple in-memory cache for fetched pages with size limit.
  */
 const responseCache = new Map();
+const MAX_CACHE_ENTRIES = 200;
+
+/** Allowed hostnames for outbound requests (SSRF protection) */
+const ALLOWED_HOSTS = ["www.spartan.ng", "spartan.ng", "dev.to"];
+
+/** Default fetch timeout in milliseconds */
+const FETCH_TIMEOUT_MS = Number(process.env.SPARTAN_FETCH_TIMEOUT_MS || 15000);
 
 /**
  * Fetch a URL and return HTML or text with basic caching.
@@ -92,6 +359,17 @@ const responseCache = new Map();
  * @param {boolean} noCache
  */
 export async function fetchContent(url, format = "html", noCache = false) {
+  // Validate URL against allowlist to prevent SSRF
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    throw new Error("Invalid URL provided");
+  }
+  if (!ALLOWED_HOSTS.includes(parsedUrl.hostname)) {
+    throw new Error(`Blocked request to disallowed host: ${parsedUrl.hostname}`);
+  }
+
   const ttlMs = Number(process.env.SPARTAN_CACHE_TTL_MS || 5 * 60 * 1000);
   const cacheKey = `${url}::${format}`;
   const now = Date.now();
@@ -100,19 +378,35 @@ export async function fetchContent(url, format = "html", noCache = false) {
     if (now - entry.timestampMs < ttlMs) {
       return entry.content;
     }
+    responseCache.delete(cacheKey);
   }
-  const res = await fetch(url, {
-    headers: { "User-Agent": "spartan-ui-mcp/1.0" },
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+
+  // Fetch with timeout via AbortController
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "spartan-ui-mcp/2.0" },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`Fetch failed with status ${res.status}`);
+    }
+    const html = await res.text();
+    const result = format === "text" ? htmlToText(html) : html;
+    if (!noCache) {
+      // Evict oldest entries if cache is full
+      if (responseCache.size >= MAX_CACHE_ENTRIES) {
+        const firstKey = responseCache.keys().next().value;
+        responseCache.delete(firstKey);
+      }
+      responseCache.set(cacheKey, { content: result, timestampMs: now });
+    }
+    return result;
+  } finally {
+    clearTimeout(timeout);
   }
-  const html = await res.text();
-  const result = format === "text" ? htmlToText(html) : html;
-  if (!noCache) {
-    responseCache.set(cacheKey, { content: result, timestampMs: now });
-  }
-  return result;
 }
 
 /**
@@ -353,29 +647,3 @@ function detectLanguage(code) {
   return "typescript"; // default
 }
 
-/**
- * Extract enhanced code blocks with context
- * @param {string} html
- */
-function extractEnhancedCodeBlocks(html) {
-  const examples = [];
-  const codeRegex =
-    /<pre[^>]*><code[^>]*class="language-(\w+)"[^>]*>([\s\S]*?)<\/code><\/pre>/gi;
-
-  let match;
-  while ((match = codeRegex.exec(html)) !== null) {
-    const language = match[1];
-    const code = htmlToText(match[2]);
-
-    // Find preceding heading for context
-    const precedingText = html.substring(0, match.index);
-    const headingMatch = precedingText.match(
-      /<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>(?![\s\S]*<h[1-6])/i
-    );
-    const title = headingMatch ? htmlToText(headingMatch[1]) : "Example";
-
-    examples.push({ title, code, language });
-  }
-
-  return examples;
-}

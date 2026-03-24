@@ -1,0 +1,10 @@
+{
+  "github.copilot.chat.commitMessageGeneration.instructions": [
+    {
+      "text": "Generate commit messages following Conventional Commits. CRITICAL: header max 100 chars, each body line max 100 chars. Wrap long lines."
+    },
+    {
+      "file": ".claude/skills/conventional-commits/SKILL.md"
+    }
+  ]
+}

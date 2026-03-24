@@ -2,12 +2,18 @@
 import { cacheManager } from "./cache.js";
 import {
   fetchContent,
-  extractCodeBlocks,
-  extractAPIInfo,
+  getComponentAPI,
   KNOWN_COMPONENTS,
+  KNOWN_BLOCKS,
+  BLOCK_GITHUB_PATHS,
   SPARTAN_COMPONENTS_BASE,
   SPARTAN_DOCS_BASE,
 } from "./utils.js";
+import {
+  fetchGitHubDirectory,
+  fetchGitHubFile,
+  fetchGitHubDirectoryFiles,
+} from "./github.js";
 
 /**
  * Cache warmup utility - Pre-populate cache with all components
@@ -20,6 +26,12 @@ const DOCUMENTATION_TOPICS = [
   "typography",
   "health-checks",
   "update-guide",
+  "cli",
+  "components-json",
+  "version-support",
+  "figma",
+  "changelog",
+  "about",
 ];
 
 /**
@@ -31,22 +43,14 @@ async function warmComponent(componentName, version) {
   try {
     console.log(`  📦 Caching ${componentName}...`);
 
+    // Use Analog API for structured data (one bulk fetch, cached in memory)
+    const apiData = await getComponentAPI(componentName);
     const url = `${SPARTAN_COMPONENTS_BASE}/${componentName}`;
-    const html = await fetchContent(url, "html", true); // Force fresh fetch
-
-    const api = extractAPIInfo(html);
-    const examples = extractCodeBlocks(html);
 
     await cacheManager.setComponent(componentName, {
-      html,
-      api,
-      examples,
-      full: {
-        html,
-        api,
-        examples,
-        url,
-      },
+      api: apiData,
+      url,
+      full: { api: apiData, url },
     });
 
     return { success: true, component: componentName };
@@ -79,16 +83,79 @@ async function warmDocs(topic) {
 }
 
 /**
+ * Warm up cache for a block variant from GitHub
+ * @param {string} category
+ * @param {string} variant
+ */
+async function warmBlock(category, variant) {
+  try {
+    console.log(`  🧱 Caching block ${category}/${variant}...`);
+
+    const basePath = BLOCK_GITHUB_PATHS[category];
+    const blockPath = `${basePath}/${variant}`;
+
+    const entries = await fetchGitHubDirectory(blockPath, true);
+    const files = [];
+
+    for (const entry of entries) {
+      if (entry.type === "file" && entry.name.endsWith(".ts")) {
+        const fileData = await fetchGitHubFile(entry.path, true);
+        files.push({
+          name: entry.name,
+          content: fileData.content,
+          path: entry.path,
+        });
+      } else if (entry.type === "dir") {
+        const subFiles = await fetchGitHubDirectoryFiles(entry.path, true);
+        files.push(
+          ...subFiles.map((f) => ({
+            name: f.name,
+            content: f.content,
+            path: f.path,
+          }))
+        );
+      }
+    }
+
+    await cacheManager.setBlock(category, variant, {
+      category,
+      variant,
+      files: files.map((f) => ({
+        name: f.name,
+        content: f.content,
+        language: "typescript",
+      })),
+      fileCount: files.length,
+    });
+
+    return { success: true, category, variant };
+  } catch (error) {
+    const err = /** @type {Error} */ (error);
+    console.error(
+      `  ❌ Failed to cache block ${category}/${variant}: ${err.message}`
+    );
+    return {
+      success: false,
+      category,
+      variant,
+      error: err.message,
+    };
+  }
+}
+
+/**
  * Warm up entire cache for current version
  * @param {Object} options
  * @param {string[]} [options.components] - Specific components to cache
  * @param {boolean} [options.includeDocs] - Whether to cache docs
+ * @param {boolean} [options.includeBlocks] - Whether to cache blocks from GitHub
  * @param {(current: number, total: number) => void} [options.onProgress] - Progress callback
  */
 export async function warmCache(options = {}) {
   const {
     components = KNOWN_COMPONENTS,
     includeDocs = true,
+    includeBlocks = false,
     onProgress = null,
   } = options;
 
@@ -103,6 +170,12 @@ export async function warmCache(options = {}) {
     },
     docs: {
       total: includeDocs ? DOCUMENTATION_TOPICS.length : 0,
+      success: 0,
+      failed: 0,
+      errors: [],
+    },
+    blocks: {
+      total: includeBlocks ? Object.values(KNOWN_BLOCKS).flat().length : 0,
       success: 0,
       failed: 0,
       errors: [],
@@ -162,6 +235,29 @@ export async function warmCache(options = {}) {
     }
   }
 
+  // Cache blocks from GitHub
+  if (includeBlocks) {
+    console.log("\n🧱 Caching Blocks from GitHub...");
+    for (const [category, variants] of Object.entries(KNOWN_BLOCKS)) {
+      for (const variant of variants) {
+        const result = await warmBlock(category, variant);
+
+        if (result.success) {
+          results.blocks.success++;
+        } else {
+          results.blocks.failed++;
+          results.blocks.errors.push({
+            block: `${category}/${variant}`,
+            error: result.error,
+          });
+        }
+
+        // Rate limit GitHub API requests
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
+  }
+
   results.duration = Date.now() - startTime;
 
   // Print summary
@@ -175,6 +271,12 @@ export async function warmCache(options = {}) {
   if (includeDocs) {
     console.log(
       `Documentation: ${results.docs.success}/${results.docs.total} successful`
+    );
+  }
+
+  if (includeBlocks) {
+    console.log(
+      `Blocks: ${results.blocks.success}/${results.blocks.total} successful`
     );
   }
 

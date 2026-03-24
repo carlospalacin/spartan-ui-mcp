@@ -3,10 +3,10 @@
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   KNOWN_COMPONENTS,
+  KNOWN_BLOCKS,
+  BLOCK_CATEGORIES,
   SPARTAN_COMPONENTS_BASE,
-  fetchContent,
-  extractCodeBlocks,
-  extractAPIInfo,
+  getComponentAPI,
 } from "./utils.js";
 
 /**
@@ -15,7 +15,7 @@ import {
  * @param {import("@modelcontextprotocol/sdk/server/mcp.js").McpServer} server
  */
 export function registerResourceHandlers(server) {
-  // Register component list resource
+  // Component list resource
   server.resource(
     "Spartan UI Components List",
     "spartan://components/list",
@@ -40,12 +40,6 @@ export function registerResourceHandlers(server) {
                   fullResource: `spartan://component/${name}/full`,
                 })),
                 totalComponents: KNOWN_COMPONENTS.length,
-                metadata: {
-                  description:
-                    "Spartan UI is a collection of Angular UI components",
-                  baseUrl: "https://www.spartan.ng",
-                  documentation: "https://www.spartan.ng/documentation",
-                },
               },
               null,
               2
@@ -56,19 +50,16 @@ export function registerResourceHandlers(server) {
     }
   );
 
-  // Register individual component resources using templates
-  // API resources
+  // API resources — uses Analog API for structured data
   const apiTemplate = new ResourceTemplate("spartan://component/{name}/api", {
-    list: async () => {
-      return {
-        resources: KNOWN_COMPONENTS.map((name) => ({
-          uri: `spartan://component/${name}/api`,
-          name: `${name} - API Documentation`,
-          description: `Brain API and Helm API specifications for ${name} component`,
-          mimeType: "application/json",
-        })),
-      };
-    },
+    list: async () => ({
+      resources: KNOWN_COMPONENTS.map((name) => ({
+        uri: `spartan://component/${name}/api`,
+        name: `${name} - API Documentation`,
+        description: `Brain API and Helm API specifications for ${name} component`,
+        mimeType: "application/json",
+      })),
+    }),
     complete: {},
   });
 
@@ -88,14 +79,12 @@ export function registerResourceHandlers(server) {
         ? variables.name[0]
         : variables.name;
 
-      // Verify component exists
       if (!KNOWN_COMPONENTS.includes(name)) {
         throw new Error(`Unknown component: ${name}`);
       }
 
-      const componentUrl = `${SPARTAN_COMPONENTS_BASE}/${name}`;
-      const html = await fetchContent(componentUrl, "html", false);
-      const apiData = extractAPIInfo(html);
+      const apiData = await getComponentAPI(name);
+      if (!apiData) throw new Error(`No API data for component: ${name}`);
 
       return {
         contents: [
@@ -105,14 +94,11 @@ export function registerResourceHandlers(server) {
             text: JSON.stringify(
               {
                 component: name,
-                url: componentUrl,
+                url: `${SPARTAN_COMPONENTS_BASE}/${name}`,
                 brainAPI: apiData.brainAPI,
                 helmAPI: apiData.helmAPI,
-                metadata: {
-                  brainAPICount: apiData.brainAPI.length,
-                  helmAPICount: apiData.helmAPI.length,
-                  description: `Brain API provides unstyled, accessible primitives. Helm API provides pre-styled components.`,
-                },
+                brainCount: apiData.brainCount,
+                helmCount: apiData.helmCount,
               },
               null,
               2
@@ -123,20 +109,18 @@ export function registerResourceHandlers(server) {
     }
   );
 
-  // Examples resources
+  // Examples resources — uses Analog API primitivesData
   const examplesTemplate = new ResourceTemplate(
     "spartan://component/{name}/examples",
     {
-      list: async () => {
-        return {
-          resources: KNOWN_COMPONENTS.map((name) => ({
-            uri: `spartan://component/${name}/examples`,
-            name: `${name} - Code Examples`,
-            description: `Working code examples for ${name} component`,
-            mimeType: "application/json",
-          })),
-        };
-      },
+      list: async () => ({
+        resources: KNOWN_COMPONENTS.map((name) => ({
+          uri: `spartan://component/${name}/examples`,
+          name: `${name} - Code Examples`,
+          description: `Working code examples for ${name} component`,
+          mimeType: "application/json",
+        })),
+      }),
       complete: {},
     }
   );
@@ -160,9 +144,7 @@ export function registerResourceHandlers(server) {
         throw new Error(`Unknown component: ${name}`);
       }
 
-      const componentUrl = `${SPARTAN_COMPONENTS_BASE}/${name}`;
-      const html = await fetchContent(componentUrl, "html", false);
-      const codeBlocks = extractCodeBlocks(html);
+      const apiData = await getComponentAPI(name);
 
       return {
         contents: [
@@ -172,17 +154,9 @@ export function registerResourceHandlers(server) {
             text: JSON.stringify(
               {
                 component: name,
-                url: componentUrl,
-                examples: codeBlocks.map((code, index) => ({
-                  id: index + 1,
-                  title: `Example ${index + 1}`,
-                  code: code,
-                  language: detectLanguage(code),
-                })),
-                metadata: {
-                  totalExamples: codeBlocks.length,
-                  description: `Working code examples for ${name} component`,
-                },
+                url: `${SPARTAN_COMPONENTS_BASE}/${name}`,
+                examples: apiData?.examples || [],
+                totalExamples: apiData?.exampleCount || 0,
               },
               null,
               2
@@ -193,38 +167,61 @@ export function registerResourceHandlers(server) {
     }
   );
 
-  /**
-   * Simple language detection based on code content
-   * @param {string} code
-   */
-  function detectLanguage(code) {
-    if (code.includes("import") && code.includes("Component")) {
-      return "typescript";
-    }
-    if (code.includes("import") && code.includes("from")) {
-      return "javascript";
-    }
-    if (code.includes("<") && code.includes(">") && code.includes("hlm")) {
-      return "html";
-    }
-    if (code.includes("npm") || code.includes("npx") || code.includes("ng ")) {
-      return "bash";
-    }
-    return "typescript"; // default
-  }
-
-  // Full documentation resources
-  const fullTemplate = new ResourceTemplate("spartan://component/{name}/full", {
-    list: async () => {
-      return {
-        resources: KNOWN_COMPONENTS.map((name) => ({
-          uri: `spartan://component/${name}/full`,
-          name: `${name} - Complete Documentation`,
-          description: `Complete documentation including API, examples, and metadata for ${name}`,
-          mimeType: "application/json",
-        })),
-      };
+  // Blocks list resource
+  server.resource(
+    "Spartan UI Blocks List",
+    "spartan://blocks/list",
+    {
+      description:
+        "Complete list of all Spartan UI building blocks organized by category",
+      mimeType: "application/json",
     },
+    async () => {
+      const blocksData = Object.entries(KNOWN_BLOCKS).map(
+        ([category, variants]) => ({
+          category,
+          variants: variants.map((v) => ({
+            name: v,
+            resource: `spartan://block/${category}/${v}`,
+          })),
+          variantCount: variants.length,
+        })
+      );
+
+      return {
+        contents: [
+          {
+            uri: "spartan://blocks/list",
+            mimeType: "application/json",
+            text: JSON.stringify(
+              {
+                blocks: blocksData,
+                totalCategories: blocksData.length,
+                totalVariants: blocksData.reduce(
+                  (sum, c) => sum + c.variantCount,
+                  0
+                ),
+                categories: BLOCK_CATEGORIES,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+
+  // Full documentation resources — uses Analog API for everything
+  const fullTemplate = new ResourceTemplate("spartan://component/{name}/full", {
+    list: async () => ({
+      resources: KNOWN_COMPONENTS.map((name) => ({
+        uri: `spartan://component/${name}/full`,
+        name: `${name} - Complete Documentation`,
+        description: `Complete documentation including API, examples, and metadata for ${name}`,
+        mimeType: "application/json",
+      })),
+    }),
     complete: {},
   });
 
@@ -248,10 +245,8 @@ export function registerResourceHandlers(server) {
         throw new Error(`Unknown component: ${name}`);
       }
 
-      const componentUrl = `${SPARTAN_COMPONENTS_BASE}/${name}`;
-      const html = await fetchContent(componentUrl, "html", false);
-      const apiData = extractAPIInfo(html);
-      const codeBlocks = extractCodeBlocks(html);
+      const apiData = await getComponentAPI(name);
+      if (!apiData) throw new Error(`No API data for component: ${name}`);
 
       return {
         contents: [
@@ -261,24 +256,15 @@ export function registerResourceHandlers(server) {
             text: JSON.stringify(
               {
                 component: name,
-                url: componentUrl,
-                api: {
-                  brainAPI: apiData.brainAPI,
-                  helmAPI: apiData.helmAPI,
-                },
-                examples: codeBlocks.map((code, index) => ({
-                  id: index + 1,
-                  title:
-                    apiData.examples[index]?.title || `Example ${index + 1}`,
-                  code: code,
-                  language: detectLanguage(code),
-                })),
-                metadata: {
-                  brainAPICount: apiData.brainAPI.length,
-                  helmAPICount: apiData.helmAPI.length,
-                  totalExamples: codeBlocks.length,
-                  fetchedAt: new Date().toISOString(),
-                },
+                url: `${SPARTAN_COMPONENTS_BASE}/${name}`,
+                brainAPI: apiData.brainAPI,
+                helmAPI: apiData.helmAPI,
+                examples: apiData.examples,
+                installSnippets: apiData.installSnippets,
+                brainCount: apiData.brainCount,
+                helmCount: apiData.helmCount,
+                exampleCount: apiData.exampleCount,
+                fetchedAt: new Date().toISOString(),
               },
               null,
               2

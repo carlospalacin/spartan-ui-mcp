@@ -104,36 +104,53 @@ export function registerCacheTools(server) {
     {
       title: "Rebuild cache",
       description:
-        "Rebuild cache by fetching fresh documentation from spartan.ng for all components",
+        "Rebuild cache by fetching fresh data from spartan.ng and GitHub. " +
+        "Caches component docs, documentation topics, and optionally block source code.",
       inputSchema: {
         components: z
           .array(z.string())
           .optional()
           .describe(
-            "Specific components to rebuild (default: all 46 components)"
+            "Specific components to rebuild (default: all components)"
           ),
         includeDocs: z
           .boolean()
           .optional()
           .describe("Include documentation topics (default: true)"),
+        includeBlocks: z
+          .boolean()
+          .optional()
+          .describe(
+            "Include block source code from GitHub (default: false). " +
+            "Requires GitHub API access — set GITHUB_TOKEN for best results."
+          ),
       },
     },
     async (
-      /** @type {{ components?: string[], includeDocs?: boolean }} */ {
+      /** @type {{ components?: string[], includeDocs?: boolean, includeBlocks?: boolean }} */ {
         components,
         includeDocs = true,
+        includeBlocks = false,
       }
     ) => {
       try {
         await cacheManager.initialize();
+
+        // Validate component names against allowlist
+        const componentList = components || KNOWN_COMPONENTS;
+        const invalid = componentList.filter((c) => !KNOWN_COMPONENTS.includes(c));
+        if (invalid.length > 0) {
+          throw new Error(`Unknown components: ${invalid.join(", ")}`);
+        }
 
         // Clear existing cache first
         await cacheManager.clearVersion();
 
         // Warm up cache
         const results = await warmCache({
-          components: components || KNOWN_COMPONENTS,
+          components: componentList,
           includeDocs,
+          includeBlocks,
           onProgress: (current, total) => {
             // Progress tracking (could be enhanced with streaming)
             if (current % 5 === 0) {
@@ -159,6 +176,11 @@ export function registerCacheTools(server) {
                     total: results.docs.total,
                     success: results.docs.success,
                     failed: results.docs.failed,
+                  },
+                  blocks: {
+                    total: results.blocks.total,
+                    success: results.blocks.success,
+                    failed: results.blocks.failed,
                   },
                   duration: `${(results.duration / 1000).toFixed(2)}s`,
                 },
