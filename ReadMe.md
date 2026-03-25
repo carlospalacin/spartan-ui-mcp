@@ -20,7 +20,7 @@ Configure your MCP client (Claude Desktop, Cursor, VS Code, etc.):
   "mcpServers": {
     "spartan-ng-mcp": {
       "command": "npx",
-      "args": ["spartan-ng-mcp"]
+      "args": ["-y", "spartan-ng-mcp"]
     }
   }
 }
@@ -35,7 +35,7 @@ For block source code and component source fetching, a GitHub token gives you 50
   "mcpServers": {
     "spartan-ng-mcp": {
       "command": "npx",
-      "args": ["spartan-ng-mcp"],
+      "args": ["-y", "spartan-ng-mcp"],
       "env": {
         "GITHUB_TOKEN": "ghp_your_token_here"
       }
